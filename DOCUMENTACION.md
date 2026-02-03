@@ -17,7 +17,7 @@
 ## Visión General
 
 **Image Decomposer** es una aplicación de escritorio que permite:
-- Cargar imágenes en cualquier formato
+- Capturar imágenes desde la cámara web con OpenCV
 - Descomponer imágenes en sus valores RGB individuales
 - Almacenar estos valores en una base de datos en la nube (Supabase)
 - Reconstruir imágenes desde sus valores RGB almacenados
@@ -48,9 +48,9 @@ El proyecto sigue el patrón de **separación de responsabilidades** y arquitect
 
 ### Flujo de Datos
 
-**Carga de Imagen:**
+**Captura de Imagen:**
 ```
-Archivo → OpenCV (cv2.imread) → Array NumPy RGB → Flatten → String → Supabase
+Cámara → cv2.VideoCapture(0) → Frame BGR → cvtColor(BGR→RGB) → Array NumPy RGB → Flatten → String → Supabase
 ```
 
 **Reconstrucción:**
@@ -841,34 +841,33 @@ Compresión PNG: 3x - 12x más pequeño
 
 ---
 
-## gui_upload.py - Interfaz de Carga
+## gui_upload.py - Interfaz de Captura
 
 ### Propósito
-Ventana gráfica para seleccionar imágenes, mostrar preview, y guardarlas en la base de datos. Usa **OpenCV para todo el procesamiento** y PIL solo para la conversión final a ImageTk.
+Ventana gráfica para capturar imágenes desde la cámara web, mostrar feed en vivo, y guardarlas en la base de datos. Usa **OpenCV para captura de cámara y procesamiento** y PIL solo para la conversión final a ImageTk.
 
 ### Imports
 
 ```python
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import messagebox
 from PIL import Image, ImageTk
 import cv2
-from image_processor import cargar_imagen, imagen_a_string_rgb, calcular_tamano_imagen
+from image_processor import imagen_a_string_rgb, calcular_tamano_imagen
 from database import save_image
 ```
 
 | Import | Uso | Cuándo se usa |
 |--------|-----|---------------|
 | `tkinter` | Biblioteca GUI estándar de Python | Ventanas, botones, canvas |
-| `filedialog` | Diálogo para seleccionar archivos | Botón "Seleccionar Imagen" |
 | `messagebox` | Ventanas de alerta/información | Errores, confirmaciones |
-| `cv2` | OpenCV - Procesamiento de imágenes | **Todo el procesamiento** |
+| `cv2` | OpenCV - Captura de cámara y procesamiento | **Cámara y procesamiento** |
 | `ImageTk` | Convertir array NumPy a formato Tkinter | **Solo para mostrar en canvas** |
 
 **Flujo de datos:**
 ```
-Archivo → cv2 (OpenCV) → NumPy array → PIL → ImageTk → Tkinter Canvas
-          └────── Procesamiento ─────┘   └─ Solo conversión ─┘
+Cámara → cv2.VideoCapture(0) → frame BGR → cvtColor → NumPy array RGB → PIL → ImageTk → Canvas
+         └──────────── Captura y Procesamiento ────────────┘   └─ Solo conversión ─┘
 ```
 
 ### Arquitectura de la Clase
@@ -877,109 +876,93 @@ Archivo → cv2 (OpenCV) → NumPy array → PIL → ImageTk → Tkinter Canvas
 class UploadWindow:
     def __init__(self, parent=None):
         # Variables de instancia
-        self.imagen_actual = None    # Array NumPy de OpenCV
-        self.ruta_imagen = None       # Path del archivo
-        self.photo_image = None       # ImageTk para Tkinter
+        self.imagen_actual = None      # Array NumPy de OpenCV (foto capturada)
+        self.photo_image = None        # ImageTk para Tkinter
+
+        # Variables de cámara
+        self.cap = None                # cv2.VideoCapture
+        self.camara_activa = False     # Flag para el loop de feed
 ```
 
 **Tipos de datos:**
 ```python
-self.imagen_actual: np.ndarray    # Array NumPy (alto, ancho, 3) uint8
-self.ruta_imagen: str             # "C:/fotos/imagen.jpg"
-self.photo_image: ImageTk.PhotoImage  # Objeto para Tkinter
+self.imagen_actual: np.ndarray         # Array NumPy (alto, ancho, 3) uint8
+self.cap: cv2.VideoCapture             # Objeto de captura de cámara
+self.camara_activa: bool               # True cuando el feed está activo
+self.photo_image: ImageTk.PhotoImage   # Objeto para Tkinter
 ```
 
-### Sección 1: Seleccionar y Cargar Imagen
+### Sección 1: Abrir Cámara y Feed en Vivo
 
 ```python
-def _seleccionar_imagen(self):
-    """Abre diálogo para seleccionar imagen y la carga con OpenCV."""
-    filetypes = [
-        ("Imágenes", "*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp"),
-        ("Todos los archivos", "*.*")
-    ]
+def _abrir_camara(self):
+    """Inicializa cv2.VideoCapture(0) y arranca el loop de feed."""
+    self.cap = cv2.VideoCapture(0)
 
-    filepath = filedialog.askopenfilename(
-        title="Seleccionar imagen",
-        filetypes=filetypes
-    )
+    if not self.cap.isOpened():
+        messagebox.showerror("Error", "No se pudo acceder a la cámara")
+        return
 
-    if filepath:
-        try:
-            # Cargar imagen con OpenCV (retorna array NumPy RGB)
-            self.imagen_actual = cargar_imagen(filepath)
-            self.ruta_imagen = filepath
+    self.camara_activa = True
+    self._actualizar_feed()
 
-            # Obtener dimensiones (OpenCV usa shape)
-            alto, ancho = self.imagen_actual.shape[:2]
-            self.lbl_dimensions.config(text=f"Dimensiones: {ancho} x {alto} píxeles")
+def _actualizar_feed(self):
+    """Lee frame, convierte BGR→RGB, muestra en canvas, se llama con after(30)."""
+    if not self.camara_activa or self.cap is None:
+        return
 
-            # Calcular tamaño en memoria
-            calcular_tamano_imagen(self.imagen_actual)
+    ret, frame = self.cap.read()
+    if ret:
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # Redimensionar y mostrar en canvas...
+        pil_image = Image.fromarray(preview)
+        self.photo_image = ImageTk.PhotoImage(pil_image)
+        self.canvas.create_image(...)
 
-            # Mostrar preview
-            self._mostrar_preview()
-
-            # Habilitar botón de guardar
-            self.btn_save.config(state=tk.NORMAL)
-
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al cargar imagen:\n{str(e)}")
+    self.window.after(30, self._actualizar_feed)  # ~33 FPS
 ```
 
 **Explicación detallada:**
 
-#### 1. Diálogo de archivos
+#### 1. Abrir la cámara con OpenCV
 
 ```python
-filepath = filedialog.askopenfilename(
-    title="Seleccionar imagen",
-    filetypes=[
-        ("Imágenes", "*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp"),
-        ("Todos los archivos", "*.*")
-    ]
-)
+self.cap = cv2.VideoCapture(0)
 ```
 
-Abre un explorador de archivos nativo del sistema operativo:
-- Windows: Explorador de Windows
-- macOS: Finder
-- Linux: Diálogo GTK/Qt según el entorno
+- `cv2.VideoCapture(0)` abre la cámara por defecto del sistema (índice 0)
+- Similar al estilo del profesor en scripts `video.py` y `*_live.py`
+- Retorna un objeto de captura que permite leer frames
 
-#### 2. Cargar con OpenCV
+#### 2. Loop de actualización (Tkinter-friendly)
 
 ```python
-self.imagen_actual = cargar_imagen(filepath)
+def _actualizar_feed(self):
+    if self.camara_activa and self.cap.isOpened():
+        ret, frame = self.cap.read()
+        if ret:
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # mostrar en canvas...
+        self.window.after(30, self._actualizar_feed)
 ```
 
-Internamente ejecuta:
+- **No usa `while True`** (bloquearía la GUI de Tkinter)
+- Usa `self.window.after(30, ...)` para programar la siguiente actualización
+- Cada 30ms (~33 FPS) lee un nuevo frame de la cámara
+- Convierte BGR→RGB antes de mostrar
+
+#### 3. Tomar foto y detener cámara
+
 ```python
-imagen = cv2.imread(filepath)           # Lee en BGR
-imagen_rgb = cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB)  # Convierte a RGB
-return imagen_rgb  # Array NumPy (alto, ancho, 3) uint8
+def _tomar_foto(self):
+    ret, frame = self.cap.read()
+    self.imagen_actual = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    self._detener_camara()  # cap.release()
 ```
 
-#### 3. Obtener dimensiones
-
-```python
-alto, ancho = self.imagen_actual.shape[:2]
-```
-
-**Sintaxis de slicing:**
-```python
-self.imagen_actual.shape = (480, 640, 3)
-                            ↑    ↑    ↑
-                         alto ancho canales
-
-shape[:2] = (480, 640)  # Primeros 2 elementos
-            alto  ancho
-```
-
-Equivalente a:
-```python
-alto, ancho, canales = self.imagen_actual.shape
-# Pero solo necesitamos alto y ancho
-```
+- Captura el frame actual como numpy array RGB
+- Detiene la cámara liberando el recurso
+- Muestra preview estática de la foto capturada
 
 ### Sección 2: Mostrar Preview
 
@@ -1976,23 +1959,24 @@ gris = cv2.cvtColor(imagen_rgb, cv2.COLOR_RGB2GRAY)
 
 ## Resumen de Flujos Completos
 
-### Flujo de Carga (con OpenCV)
+### Flujo de Captura (con OpenCV)
 
 ```
 1. Usuario: main.py → Click "Cargar Imagen"
 2. GUI: gui_upload.py → Abre ventana
-3. Usuario: Click "Seleccionar" → filedialog
-4. GUI: filepath seleccionado
-5. Procesador: cv2.imread(filepath) → Array NumPy BGR
-6. Procesador: cv2.cvtColor(BGR → RGB) → Array NumPy RGB
-7. GUI: Mostrar dimensiones, calcular tamaño
-8. GUI: cv2.resize() + Image.fromarray() + ImageTk → Mostrar preview
-9. Usuario: Click "Guardar"
-10. Procesador: imagen.flatten() → Vector 1D
-11. Procesador: ",".join() → String RGB
-12. Database: INSERT en Supabase
-13. Database: Retorna ID
-14. GUI: Mostrar ID generado
+3. Usuario: Click "Abrir Cámara"
+4. GUI: cv2.VideoCapture(0) → Feed en vivo en canvas (loop con after(30))
+5. Usuario: Click "Tomar Foto"
+6. GUI: cap.read() → frame BGR → cv2.cvtColor(BGR → RGB) → Array NumPy RGB
+7. GUI: cap.release() → Cámara liberada
+8. GUI: Mostrar dimensiones, calcular tamaño
+9. GUI: cv2.resize() + Image.fromarray() + ImageTk → Mostrar preview
+10. Usuario: Click "Guardar"
+11. Procesador: imagen.flatten() → Vector 1D
+12. Procesador: ",".join() → String RGB
+13. Database: INSERT en Supabase
+14. Database: Retorna ID
+15. GUI: Mostrar ID generado
 ```
 
 ### Flujo de Consulta (con OpenCV)

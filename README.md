@@ -39,13 +39,15 @@
 
 ## Descripcion
 
-**Image Decomposer** es una aplicacion de escritorio que demuestra como las imagenes digitales se componen de matrices de valores RGB. Utiliza **OpenCV (cv2)** y **NumPy** para el procesamiento de imagenes, siguiendo los conceptos del curso de Sistemas Inteligentes.
+**Image Decomposer** es una aplicacion de escritorio que demuestra como las imagenes digitales se componen de matrices de valores RGB. Utiliza **OpenCV (cv2)** y **NumPy** para la captura de camara y procesamiento de imagenes, siguiendo los conceptos del curso de Sistemas Inteligentes.
 
 ```python
 import cv2
-imagen = cv2.imread('foto.png')
-print(imagen.shape)  # (alto, ancho, canales)
-print(imagen.dtype)  # uint8
+cap = cv2.VideoCapture(0)
+ret, frame = cap.read()
+print(frame.shape)  # (alto, ancho, canales)
+print(frame.dtype)  # uint8
+cap.release()
 ```
 
 <div align="center">
@@ -60,10 +62,10 @@ print(imagen.dtype)  # uint8
 <tr>
 <td width="50%">
 
-### Carga de Imagenes
-- Soporta **JPG, PNG, BMP, GIF, WEBP, TIFF**
-- Conversion automatica a PNG
-- Preview en tiempo real
+### Captura de Imagenes
+- Captura en vivo desde **camara web** con OpenCV
+- Feed en tiempo real (~33 FPS)
+- Captura de foto con un click
 
 </td>
 <td width="50%">
@@ -233,11 +235,11 @@ SUPABASE_KEY=tu_anon_key_aqui
 python main.py
 ```
 
-### Cargar Imagen
+### Capturar Imagen
 
 1. Click en **"Cargar Imagen"**
-2. Selecciona un archivo de imagen
-3. Visualiza el preview
+2. Click en **"Abrir Camara"** para ver el feed en vivo
+3. Click en **"Tomar Foto"** para capturar
 4. Click en **"Guardar en Base de Datos"**
 5. Anota el **ID** generado
 
