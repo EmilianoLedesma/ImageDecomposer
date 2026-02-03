@@ -259,7 +259,7 @@ python main.py
 | **Python** | Lenguaje principal | ![Python](https://img.shields.io/badge/-Python-3776AB?style=flat-square&logo=python&logoColor=white) |
 | **OpenCV** | Lectura y procesamiento de imagenes | ![OpenCV](https://img.shields.io/badge/-OpenCV-5C3EE8?style=flat-square&logo=opencv&logoColor=white) |
 | **NumPy** | Operaciones matriciales (flatten, reshape) | ![NumPy](https://img.shields.io/badge/-NumPy-013243?style=flat-square&logo=numpy&logoColor=white) |
-| **Pillow** | Conversion para mostrar en Tkinter | ![Pillow](https://img.shields.io/badge/-Pillow-3776AB?style=flat-square&logo=python&logoColor=white) |
+| **Pillow (PIL)** | Conversion NumPy → ImageTk (solo para Tkinter) | ![Pillow](https://img.shields.io/badge/-Pillow-3776AB?style=flat-square&logo=python&logoColor=white) |
 | **Supabase** | Base de datos PostgreSQL en la nube | ![Supabase](https://img.shields.io/badge/-Supabase-3ECF8E?style=flat-square&logo=supabase&logoColor=white) |
 | **Tkinter** | Interfaz grafica | ![Tkinter](https://img.shields.io/badge/-Tkinter-FF6F00?style=flat-square&logo=python&logoColor=white) |
 

@@ -3,35 +3,107 @@
 ## Índice
 
 1. [Visión General](#visión-general)
-2. [config.py - Configuración](#configpy---configuración)
-3. [database.py - Capa de Datos](#databasepy---capa-de-datos)
-4. [image_processor.py - Procesamiento de Imágenes](#image_processorpy---procesamiento-de-imágenes)
-5. [gui_upload.py - Interfaz de Carga](#gui_uploadpy---interfaz-de-carga)
-6. [gui_viewer.py - Interfaz de Visualización](#gui_viewerpy---interfaz-de-visualización)
-7. [main.py - Punto de Entrada](#mainpy---punto-de-entrada)
+2. [Tecnologías y Arquitectura](#tecnologías-y-arquitectura)
+3. [config.py - Configuración](#configpy---configuración)
+4. [database.py - Capa de Datos](#databasepy---capa-de-datos)
+5. [image_processor.py - Procesamiento de Imágenes](#image_processorpy---procesamiento-de-imágenes)
+6. [gui_upload.py - Interfaz de Carga](#gui_uploadpy---interfaz-de-carga)
+7. [gui_viewer.py - Interfaz de Visualización](#gui_viewerpy---interfaz-de-visualización)
+8. [main.py - Punto de Entrada](#mainpy---punto-de-entrada)
+9. [Conceptos Avanzados de OpenCV](#conceptos-avanzados-de-opencv)
 
 ---
 
 ## Visión General
 
-El proyecto sigue el patrón de **separación de responsabilidades**:
+**Image Decomposer** es una aplicación de escritorio que permite:
+- Cargar imágenes en cualquier formato
+- Descomponer imágenes en sus valores RGB individuales
+- Almacenar estos valores en una base de datos en la nube (Supabase)
+- Reconstruir imágenes desde sus valores RGB almacenados
+
+El proyecto utiliza **OpenCV (cv2)** como biblioteca principal de procesamiento de imágenes, siguiendo las técnicas enseñadas en el curso de procesamiento digital de imágenes.
+
+### Separación de Responsabilidades
+
+El proyecto sigue el patrón de **separación de responsabilidades** y arquitectura modular:
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │   config    │────▶│  database   │────▶│  Supabase   │
-└─────────────┘     └─────────────┘     └─────────────┘
-                          ▲
+└─────────────┘     └─────────────┘     │  (Cloud DB) │
+                          ▲              └─────────────┘
                           │
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  gui_upload │────▶│   image     │────▶│   OpenCV    │
+│  gui_viewer │     │  processor  │     │  + NumPy    │
+└─────────────┘     └─────────────┘     └─────────────┘
+        ▲                   │
+        │                   ▼
 ┌─────────────┐     ┌─────────────┐
-│  gui_upload │────▶│   image     │
-│  gui_viewer │────▶│  processor  │
+│    main     │     │     PIL     │ (solo para Tkinter)
+│  (Tkinter)  │     │  (ImageTk)  │
 └─────────────┘     └─────────────┘
-        ▲
-        │
-┌─────────────┐
-│    main     │
-└─────────────┘
 ```
+
+### Flujo de Datos
+
+**Carga de Imagen:**
+```
+Archivo → OpenCV (cv2.imread) → Array NumPy RGB → Flatten → String → Supabase
+```
+
+**Reconstrucción:**
+```
+Supabase → String → Array NumPy → Reshape → Imagen RGB → PIL → Tkinter
+```
+
+---
+
+## Tecnologías y Arquitectura
+
+### Stack Tecnológico
+
+| Tecnología | Propósito | Dónde se Usa |
+|------------|-----------|--------------|
+| **OpenCV (cv2)** | Lectura y procesamiento principal de imágenes | `image_processor.py` - Todas las operaciones de imagen |
+| **NumPy** | Manipulación de matrices y arrays | `image_processor.py` - flatten, reshape, indexing |
+| **PIL/Pillow** | Conversión de NumPy a formato Tkinter **únicamente** | GUIs - Solo para método `ImageTk.PhotoImage()` |
+| **Tkinter** | Interfaz gráfica de usuario | `main.py`, `gui_upload.py`, `gui_viewer.py` |
+| **Supabase** | Base de datos PostgreSQL en la nube | `database.py` |
+| **python-dotenv** | Manejo de variables de entorno | `config.py` |
+
+### ¿Por qué OpenCV y no PIL?
+
+**OpenCV es superior para procesamiento digital de imágenes porque:**
+
+1. **Formato de arrays NumPy nativo**: OpenCV trabaja directamente con arrays NumPy, mientras que PIL usa su propio formato Image
+2. **BGR vs RGB**: OpenCV lee en BGR (estándar de visión por computadora), permitiendo control total
+3. **Rendimiento**: OpenCV está optimizado en C/C++ para operaciones matriciales
+4. **Funcionalidades avanzadas**: Filtros, transformaciones, detección, etc.
+
+**PIL solo se usa para una cosa:**
+```python
+# OpenCV procesa la imagen
+imagen_cv = cv2.imread("foto.jpg")  # Array NumPy
+procesar_con_opencv(imagen_cv)
+
+# PIL solo para mostrar en Tkinter (incompatibilidad)
+img_pil = Image.fromarray(imagen_cv)
+photo = ImageTk.PhotoImage(img_pil)  # Requerido por Tkinter
+canvas.create_image(x, y, image=photo)
+```
+
+### Conceptos de OpenCV Utilizados
+
+| Concepto | Descripción | Código |
+|----------|-------------|--------|
+| **Lectura BGR** | OpenCV lee imágenes en formato BGR por defecto | `cv2.imread(path)` |
+| **Conversión BGR→RGB** | Convertir a RGB para visualización correcta | `cv2.cvtColor(img, cv2.COLOR_BGR2RGB)` |
+| **Shape** | Dimensiones del array: (alto, ancho, canales) | `imagen.shape` → `(480, 640, 3)` |
+| **Indexing** | Acceso a píxeles y canales | `imagen[y, x, canal]` |
+| **Slicing de canales** | Extraer canal individual | `r = imagen[:, :, 0]` |
+| **dtype uint8** | Tipo de dato: enteros sin signo 0-255 | `imagen.dtype` → `uint8` |
 
 ---
 
@@ -218,218 +290,561 @@ SELECT * FROM images WHERE id = 1;
 ## image_processor.py - Procesamiento de Imágenes
 
 ### Propósito
-Contiene toda la lógica de manipulación de imágenes: cargar, descomponer en RGB, y reconstruir.
+Contiene toda la lógica de manipulación de imágenes usando **OpenCV (cv2)** como biblioteca principal. Este módulo implementa los conceptos fundamentales del curso de procesamiento digital de imágenes.
 
 ### Imports
 
 ```python
-import os
-import tempfile
-from PIL import Image
+import cv2
 import numpy as np
 ```
 
-| Import | Uso |
-|--------|-----|
-| `os` | Operaciones con rutas de archivos |
-| `tempfile` | Obtener directorio temporal del sistema |
-| `PIL.Image` | Biblioteca Pillow para manipular imágenes |
-| `numpy` | Operaciones matemáticas con matrices |
+| Import | Uso | Detalles |
+|--------|-----|----------|
+| `cv2` | OpenCV - Biblioteca principal de visión por computadora | Lectura de imágenes, conversiones de color |
+| `numpy` | Operaciones matemáticas con matrices | flatten, reshape, indexing, slicing |
 
-### Sección 1: Cargar y Convertir a PNG
+**Nota importante:** No se usa PIL/Pillow en este módulo. Todo el procesamiento es con OpenCV + NumPy.
+
+### Sección 1: Cargar Imagen con OpenCV
 
 ```python
-def load_and_convert_to_png(path: str) -> tuple[str, Image.Image]:
-    """Carga una imagen desde cualquier formato y la convierte a PNG."""
+def cargar_imagen(path: str):
+    """
+    Carga una imagen desde cualquier formato.
+    Retorna la imagen en formato RGB (convertida desde BGR de OpenCV).
+    """
+    # Leer imagen con OpenCV (lee en BGR)
+    imagen = cv2.imread(path)
 
-    # Cargar imagen
-    image = Image.open(path)
+    if imagen is None:
+        raise Exception(f"No se pudo cargar la imagen: {path}")
 
-    # Convertir a RGB si es necesario
-    if image.mode != "RGB":
-        image = image.convert("RGB")
+    # Mostrar info como en clase
+    print(f"Shape: {imagen.shape}")  # (alto, ancho, canales)
+    print(f"Dtype: {imagen.dtype}")  # uint8
+    print(f"Size: {imagen.size}")    # alto * ancho * canales
 
-    # Crear nombre para el archivo PNG
-    base_name = os.path.splitext(os.path.basename(path))[0]
+    # Convertir de BGR a RGB (OpenCV usa BGR por defecto)
+    imagen_rgb = cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB)
 
-    # Guardar en carpeta temporal
-    temp_dir = tempfile.gettempdir()
-    png_path = os.path.join(temp_dir, f"{base_name}_converted.png")
+    return imagen_rgb
+```
 
-    # Guardar como PNG
-    image.save(png_path, "PNG")
+**Explicación detallada:**
 
-    return png_path, image
+#### 1. Lectura con OpenCV
+```python
+imagen = cv2.imread(path)
+```
+- OpenCV lee la imagen en formato **BGR** (Blue, Green, Red) en lugar de RGB
+- Esto es estándar en visión por computadora (herencia de cámaras de video antiguas)
+- Retorna un **array NumPy 3D** con shape `(alto, ancho, 3)`
+
+#### 2. Validación
+```python
+if imagen is None:
+    raise Exception(f"No se pudo cargar la imagen: {path}")
+```
+- `cv2.imread()` retorna `None` si el archivo no existe o no es válido
+- Es importante validar antes de usar la imagen
+
+#### 3. Información de la imagen (shape, dtype, size)
+
+```python
+print(f"Shape: {imagen.shape}")  # Ejemplo: (480, 640, 3)
+print(f"Dtype: {imagen.dtype}")  # uint8 (0-255)
+print(f"Size: {imagen.size}")    # 921600 (480 * 640 * 3)
+```
+
+**¿Qué es el shape?**
+```
+imagen.shape = (alto, ancho, canales)
+                 ↓      ↓        ↓
+Ejemplo:       (480,   640,     3)
+               filas  columnas  BGR
+```
+
+**Visualización del shape:**
+```
+       ←─── 640 píxeles (ancho) ───→
+    ┌──────────────────────────────┐  ↑
+    │ [B, G, R] [B, G, R] [B, G, R]│  │
+    │ [B, G, R] [B, G, R] [B, G, R]│  │ 480 píxeles
+    │     ...       ...       ...   │  │ (alto)
+    │ [B, G, R] [B, G, R] [B, G, R]│  │
+    └──────────────────────────────┘  ↓
+    
+    Cada píxel tiene 3 valores: [B, G, R]
+```
+
+**¿Qué es dtype uint8?**
+```python
+uint8 = Unsigned Integer de 8 bits
+      = Valores de 0 a 255 (2^8 = 256 valores)
+      = 1 byte por valor
+      
+Rango de colores: [0, 255]
+  0   = color apagado (negro para ese canal)
+  255 = color máximo (totalmente encendido)
+```
+
+**Memoria ocupada:**
+```python
+imagen.size = alto × ancho × canales
+            = 480 × 640 × 3
+            = 921,600 valores
+
+Bytes en memoria = 921,600 × 1 byte (uint8)
+                 = 921,600 bytes
+                 = 900 KB
+                 ≈ 0.88 MB
+```
+
+#### 4. Conversión BGR → RGB
+
+```python
+imagen_rgb = cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB)
+```
+
+**¿Por qué convertir?**
+- OpenCV lee imágenes en formato **BGR** (Blue, Green, Red)
+- La mayoría de bibliotecas y formatos esperan **RGB** (Red, Green, Blue)
+- Sin conversión, los colores se verían incorrectos:
+
+```
+Píxel original (archivo): R=255, G=0, B=0 (ROJO)
+
+OpenCV lee:   [B=0, G=0, R=255]  ← Lee como BGR
+Sin convertir: Se interpreta como RGB → [R=0, G=0, B=255] = AZUL ❌
+
+Con cv2.cvtColor():
+  [B=0, G=0, R=255] → [R=255, G=0, B=0] = ROJO ✅
+```
+
+**Cómo funciona `cv2.cvtColor()`:**
+```python
+cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB)
+             ↑        ↑
+        Imagen     Flag de conversión
+        de entrada  
+```
+
+La función intercambia los canales:
+```
+BGR: [canal_0, canal_1, canal_2]
+      Blue      Green    Red
+
+RGB: [canal_2, canal_1, canal_0]
+      Red       Green    Blue
+```
+
+**Ejemplo con píxel naranja:**
+```python
+# BGR (como lo lee OpenCV)
+pixel_bgr = [0, 165, 255]  # B=0, G=165, R=255
+
+# Después de cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB)
+pixel_rgb = [255, 165, 0]  # R=255, G=165, B=0 ✅
+```
+
+### Sección 2: Descomposición - Imagen a String RGB
+
+```python
+def imagen_a_string_rgb(imagen) -> tuple:
+    """
+    Descompone una imagen en sus valores RGB y los convierte a string.
+
+    Proceso:
+    1. Obtener dimensiones (alto, ancho, canales)
+    2. Aplanar matriz 3D a vector 1D
+    3. Convertir a string separado por comas
+    """
+    # Obtener dimensiones
+    alto, ancho, canales = imagen.shape
+    print(f"Descomponiendo imagen de {ancho}x{alto} pixeles")
+    print(f"Total de valores RGB: {alto * ancho * canales}")
+
+    # Separar canales como en clase
+    r = imagen[:, :, 0]  # Canal Rojo
+    g = imagen[:, :, 1]  # Canal Verde
+    b = imagen[:, :, 2]  # Canal Azul
+
+    print(f"Canal R shape: {r.shape}")
+    print(f"Canal G shape: {g.shape}")
+    print(f"Canal B shape: {b.shape}")
+
+    # Aplanar la imagen completa a un vector 1D
+    flat = imagen.flatten()
+    print(f"Vector aplanado: {len(flat)} valores")
+
+    # Convertir a string
+    rgb_string = ",".join(map(str, flat))
+
+    return rgb_string, ancho, alto
 ```
 
 **Explicación paso a paso:**
 
-1. **Cargar imagen:**
-   ```python
-   image = Image.open(path)  # Abre JPG, PNG, BMP, GIF, etc.
-   ```
-
-2. **Convertir a RGB:**
-   ```python
-   if image.mode != "RGB":
-       image = image.convert("RGB")
-   ```
-   - Las imágenes pueden tener diferentes modos: `RGB`, `RGBA`, `L` (grises), `P` (paleta)
-   - Convertimos a `RGB` para tener siempre 3 canales
-
-3. **Extraer nombre base:**
-   ```python
-   base_name = os.path.splitext(os.path.basename(path))[0]
-   # "C:/fotos/mi_imagen.jpg" → "mi_imagen"
-   ```
-
-4. **Crear ruta temporal:**
-   ```python
-   temp_dir = tempfile.gettempdir()  # "C:/Users/X/AppData/Local/Temp"
-   png_path = os.path.join(temp_dir, f"{base_name}_converted.png")
-   ```
-
-### Sección 2: Imagen a String RGB (Descomposición)
+#### 1. Extraer dimensiones del shape
 
 ```python
-def image_to_rgb_string(image: Image.Image) -> tuple[str, int, int]:
-    """Extrae los valores RGB de una imagen y los convierte a string."""
-
-    # Asegurar que esté en modo RGB
-    if image.mode != "RGB":
-        image = image.convert("RGB")
-
-    # Obtener dimensiones
-    width, height = image.size
-
-    # Convertir a array numpy
-    img_array = np.array(image)
-
-    # Aplanar el array
-    flat_array = img_array.flatten()
-
-    # Convertir a string separado por comas
-    rgb_string = ",".join(map(str, flat_array))
-
-    return rgb_string, width, height
+alto, ancho, canales = imagen.shape
+# Ejemplo: alto=480, ancho=640, canales=3
 ```
 
-**Explicación del proceso de descomposición:**
+**Shape en OpenCV vs PIL:**
+```python
+# OpenCV (NumPy array)
+imagen.shape = (alto, ancho, canales)  # (480, 640, 3)
+               (filas, columnas, depth)
 
-1. **Imagen a Array NumPy:**
-   ```python
-   img_array = np.array(image)
-   ```
+# PIL/Pillow
+imagen.size = (ancho, alto)  # (640, 480)
+              (width, height)
 
-   Una imagen de 3x2 píxeles se ve así en memoria:
-   ```
-   Imagen visual:        Array NumPy (shape: 2, 3, 3):
-   ┌───┬───┬───┐         [
-   │ R │ G │ B │           [[255,0,0], [0,255,0], [0,0,255]],  ← Fila 0
-   ├───┼───┼───┤           [[255,255,0], [0,255,255], [255,0,255]]  ← Fila 1
-   │ Y │ C │ M │         ]
-   └───┴───┴───┘
-   ```
-
-2. **Aplanar (flatten):**
-   ```python
-   flat_array = img_array.flatten()
-   # [255,0,0, 0,255,0, 0,0,255, 255,255,0, 0,255,255, 255,0,255]
-   ```
-
-   Convierte la matriz 3D en un vector 1D.
-
-3. **Convertir a String:**
-   ```python
-   rgb_string = ",".join(map(str, flat_array))
-   # "255,0,0,0,255,0,0,0,255,255,255,0,0,255,255,255,0,255"
-   ```
-
-**Diagrama del proceso:**
-```
-┌─────────────────┐
-│  PIL Image      │
-│  (RGB, 3x2)     │
-└────────┬────────┘
-         │ np.array()
-         ▼
-┌─────────────────┐
-│  NumPy Array    │
-│  shape(2,3,3)   │
-└────────┬────────┘
-         │ flatten()
-         ▼
-┌─────────────────┐
-│  Vector 1D      │
-│  [255,0,0,...]  │
-└────────┬────────┘
-         │ ",".join()
-         ▼
-┌─────────────────┐
-│  String         │
-│  "255,0,0,..."  │
-└─────────────────┘
+# ⚠️ Orden diferente! Por eso usamos OpenCV
 ```
 
-### Sección 3: String RGB a Imagen (Reconstrucción)
+#### 2. Separar canales RGB con slicing
 
 ```python
-def rgb_string_to_image(rgb_string: str, width: int, height: int) -> Image.Image:
-    """Reconstruye una imagen desde un string de valores RGB."""
+r = imagen[:, :, 0]  # Canal Rojo
+g = imagen[:, :, 1]  # Canal Verde
+b = imagen[:, :, 2]  # Canal Azul
+```
+
+**Sintaxis de indexing NumPy:**
+```python
+imagen[filas, columnas, canal]
+       [:, :, 0]
+        ↑   ↑  ↑
+        │   │  └─ Canal 0 (Rojo)
+        │   └──── Todas las columnas
+        └──────── Todas las filas
+```
+
+**Visualización de la separación:**
+```
+Imagen original RGB:          Canales separados:
+┌──────────────────┐         ┌────┐  ┌────┐  ┌────┐
+│ [255, 128, 0  ]  │   →     │255 │  │128 │  │ 0  │  
+│ [ 0,  255, 128]  │         │ 0  │  │255 │  │128 │
+│ [128,   0, 255]  │         │128 │  │ 0  │  │255 │
+└──────────────────┘         └────┘  └────┘  └────┘
+   Imagen 2D con RGB          R       G       B
+                           (2D)    (2D)    (2D)
+```
+
+**Cada canal es una matriz 2D:**
+```python
+r.shape = (480, 640)  # Solo valores rojos
+g.shape = (480, 640)  # Solo valores verdes
+b.shape = (480, 640)  # Solo valores azules
+```
+
+#### 3. Aplanar (flatten) - De 3D a 1D
+
+```python
+flat = imagen.flatten()
+```
+
+**¿Qué hace flatten()?**
+
+Convierte una matriz multidimensional en un vector 1D, leyendo los datos en orden **row-major** (por filas).
+
+**Ejemplo visual con imagen pequeña (3x2):**
+
+```python
+# Imagen original 3D: shape (2, 3, 3)
+imagen = [
+    [[255,0,0], [0,255,0], [0,0,255]],    # Fila 0: Rojo, Verde, Azul
+    [[255,255,0], [255,0,255], [0,255,255]]  # Fila 1: Amarillo, Magenta, Cian
+]
+
+# Después de flatten(): shape (18,)
+flat = [255,0,0,  0,255,0,  0,0,255,  255,255,0,  255,0,255,  0,255,255]
+       └──┬──┘   └──┬──┘   └──┬──┘   └───┬──┘   └───┬───┘   └───┬──┘
+       Píxel 0   Píxel 1   Píxel 2   Píxel 3    Píxel 4    Píxel 5
+```
+
+**Orden de lectura:**
+```
+  Columna 0    Columna 1    Columna 2
+    ┌─────┐     ┌─────┐     ┌─────┐
+F0  │ RGB │ →   │ RGB │ →   │ RGB │ ┐
+    └─────┘     └─────┘     └─────┘ │
+    ┌─────┐     ┌─────┐     ┌─────┐ │ Flatten
+F1  │ RGB │ →   │ RGB │ →   │ RGB │ │ lee en
+    └─────┘     └─────┘     └─────┘ ┘ este orden
+    
+Resultado: [R0,G0,B0, R1,G1,B1, R2,G2,B2, R3,G3,B3, R4,G4,B4, R5,G5,B5]
+```
+
+**Tamaño del vector aplanado:**
+```python
+len(flat) = alto × ancho × canales
+          = 480 × 640 × 3
+          = 921,600 valores
+```
+
+#### 4. Convertir a string separado por comas
+
+```python
+rgb_string = ",".join(map(str, flat))
+```
+
+**Desglose de esta línea:**
+
+```python
+# 1. map(str, flat): Convierte cada número a string
+flat = [255, 0, 0, 128, 255, 0]
+map(str, flat)  →  ["255", "0", "0", "128", "255", "0"]
+
+# 2. ",".join(): Une con comas
+",".join(["255", "0", "0", "128", "255", "0"])
+→  "255,0,0,128,255,0"
+```
+
+**Resultado final:**
+```python
+rgb_string = "255,0,0,0,255,0,0,0,255,255,255,0,255,0,255,0,255,255"
+             └──────────────────── 921,600 valores ──────────────────┘
+             
+# Este string se guardará en la base de datos
+```
+
+### Sección 3: Reconstrucción - String RGB a Imagen
+
+```python
+def string_rgb_a_imagen(rgb_string: str, ancho: int, alto: int):
+    """
+    Reconstruye una imagen desde un string de valores RGB.
+
+    Proceso:
+    1. Parsear string a lista de enteros
+    2. Convertir a array numpy uint8
+    3. Reshape a (alto, ancho, 3)
+    """
+    print(f"Reconstruyendo imagen de {ancho}x{alto}")
 
     # Parsear string a lista de enteros
-    values = list(map(int, rgb_string.split(",")))
+    valores = list(map(int, rgb_string.split(",")))
+    print(f"Valores parseados: {len(valores)}")
 
-    # Convertir a array numpy
-    img_array = np.array(values, dtype=np.uint8)
+    # Crear array numpy con tipo uint8 (0-255)
+    arr = np.array(valores, dtype=np.uint8)
 
-    # Reshape a dimensiones originales
-    img_array = img_array.reshape((height, width, 3))
+    # Reshape a dimensiones originales (alto, ancho, 3)
+    imagen = arr.reshape((alto, ancho, 3))
+    print(f"Imagen reconstruida shape: {imagen.shape}")
 
-    # Crear imagen PIL
-    image = Image.fromarray(img_array, mode="RGB")
-
-    return image
+    return imagen
 ```
 
-**Explicación del proceso de reconstrucción:**
+**Explicación del proceso inverso:**
 
-1. **Parsear String:**
-   ```python
-   values = list(map(int, rgb_string.split(",")))
-   # "255,0,0,0,255,0" → [255, 0, 0, 0, 255, 0]
-   ```
+#### 1. Parsear string a lista de enteros
 
-2. **Crear Array con tipo correcto:**
-   ```python
-   img_array = np.array(values, dtype=np.uint8)
-   ```
-   - `dtype=np.uint8` es crucial: valores de 0-255 (unsigned int de 8 bits)
+```python
+valores = list(map(int, rgb_string.split(",")))
+```
 
-3. **Reshape:**
-   ```python
-   img_array = img_array.reshape((height, width, 3))
-   ```
+```python
+# String original
+"255,0,0,128,255,0"
 
-   ```
-   Vector 1D:              Matriz 3D:
-   [255,0,0,0,255,0,       [
-    0,0,255,255,255,0,  →    [[255,0,0], [0,255,0], [0,0,255]],
-    0,255,255,255,0,255]     [[255,255,0], [0,255,255], [255,0,255]]
-                           ]
-   ```
+# .split(",") → separa por comas
+["255", "0", "0", "128", "255", "0"]
 
-4. **Crear Imagen:**
-   ```python
-   image = Image.fromarray(img_array, mode="RGB")
-   ```
+# map(int, ...) → convierte cada string a int
+[255, 0, 0, 128, 255, 0]
+```
+
+#### 2. Crear array NumPy con tipo correcto
+
+```python
+arr = np.array(valores, dtype=np.uint8)
+```
+
+**¿Por qué `dtype=np.uint8` es crucial?**
+
+```python
+# Sin especificar dtype (por defecto usa int64)
+arr_default = np.array([255, 128, 0])
+arr_default.dtype  # int64 (8 bytes por valor)
+arr_default.nbytes  # 24 bytes
+
+# Con dtype=np.uint8
+arr_uint8 = np.array([255, 128, 0], dtype=np.uint8)
+arr_uint8.dtype  # uint8 (1 byte por valor)
+arr_uint8.nbytes  # 3 bytes
+
+# ¡8 veces menos memoria! Y es el formato que espera OpenCV
+```
+
+**Rango de valores:**
+```python
+uint8: 0 a 255 (valores válidos para RGB)
+int64: -9,223,372,036,854,775,808 a 9,223,372,036,854,775,807 (desperdicio)
+```
+
+#### 3. Reshape - De 1D a 3D
+
+```python
+imagen = arr.reshape((alto, ancho, 3))
+```
+
+**¿Qué hace reshape()?**
+
+Reorganiza el vector 1D en una matriz 3D sin cambiar los datos, solo su "forma".
+
+**Ejemplo con imagen 3x2:**
+
+```python
+# Vector 1D (shape: 18,)
+arr = [255,0,0, 0,255,0, 0,0,255, 255,255,0, 255,0,255, 0,255,255]
+
+# Reshape a (alto=2, ancho=3, canales=3)
+imagen = arr.reshape((2, 3, 3))
+
+# Resultado:
+[
+  [ [255,0,0],   [0,255,0],   [0,0,255]   ],  # Fila 0
+  [ [255,255,0], [255,0,255], [0,255,255] ]   # Fila 1
+]
+```
+
+**Visualización:**
+```
+Vector 1D:
+[255,0,0,0,255,0,0,0,255,255,255,0,255,0,255,0,255,255]
+ └──┬──┘ └──┬──┘ └──┬──┘ └───┬──┘ └───┬───┘ └───┬──┘
+   P0      P1      P2       P3       P4       P5
+
+Reshape (2, 3, 3):
+        Columna 0     Columna 1     Columna 2
+Fila 0  [255,0,0]    [0,255,0]    [0,0,255]
+Fila 1  [255,255,0]  [255,0,255]  [0,255,255]
+
+Imagen resultante:
+┌─────┬──────┬─────┐
+│ 🔴  │  🟢  │ 🔵  │
+├─────┼──────┼─────┤
+│ 🟡  │  🟣  │ 🔵  │
+└─────┴──────┴─────┘
+```
+
+**Condición para reshape:**
+```python
+producto_de_dimensiones = alto × ancho × canales
+
+len(arr) debe ser igual a producto_de_dimensiones
+
+Ejemplo:
+len(arr) = 18
+alto × ancho × canales = 2 × 3 × 3 = 18 ✅
+
+Si fueran diferentes:
+reshape((3, 3, 3)) → 3 × 3 × 3 = 27 ❌
+# ValueError: cannot reshape array of size 18 into shape (3,3,3)
+```
+
+### Sección 4: Funciones Auxiliares
+
+#### Obtener Canales Separados
+
+```python
+def obtener_canales(imagen):
+    """
+    Separa los canales RGB de una imagen.
+    Similar a canales_naturales.py del profesor.
+    """
+    r = imagen[:, :, 0]
+    g = imagen[:, :, 1]
+    b = imagen[:, :, 2]
+
+    # Crear imágenes de cada canal
+    R = np.zeros_like(imagen)
+    R[:, :, 0] = r
+
+    G = np.zeros_like(imagen)
+    G[:, :, 1] = g
+
+    B = np.zeros_like(imagen)
+    B[:, :, 2] = b
+
+    return R, G, B
+```
+
+**¿Qué hace esto?**
+
+Crea tres imágenes RGB donde cada una muestra solo un canal:
+
+```python
+Imagen original:           Canal R:              Canal G:              Canal B:
+┌──────────┐              ┌──────────┐          ┌──────────┐          ┌──────────┐
+│ [255,128,64] │          │ [255, 0, 0] │       │ [ 0,128, 0] │       │ [ 0, 0,64] │
+│ [ 0, 255, 0] │    →     │ [  0, 0, 0] │       │ [ 0,255, 0] │       │ [ 0, 0, 0] │
+│ [ 0,  0,255] │          │ [  0, 0, 0] │       │ [ 0,  0, 0] │       │ [ 0, 0,255] │
+└──────────────┘          └────────────┘        └────────────┘        └────────────┘
+   Color normal              Solo rojo            Solo verde            Solo azul
+```
+
+**¿Para qué sirve?**
+- Visualizar la contribución de cada canal al color final
+- Análisis de imágenes (qué canal tiene más información)
+- Procesamiento selectivo por canal
+
+#### Calcular Tamaño en Memoria
+
+```python
+def calcular_tamano_imagen(imagen):
+    """
+    Calcula el tamaño de una imagen en memoria.
+    """
+    alto, ancho, canales = imagen.shape
+    bytes_por_pixel = canales * 1  # uint8 = 1 byte
+    tamano_bytes = alto * ancho * bytes_por_pixel
+    tamano_kb = tamano_bytes / 1024
+    tamano_mb = tamano_kb / 1024
+
+    print(f"Dimensiones: {ancho}x{alto}")
+    print(f"Canales: {canales}")
+    print(f"Total pixeles: {alto * ancho}")
+    print(f"Tamaño en memoria: {tamano_kb:.2f} KB ({tamano_mb:.4f} MB)")
+
+    return tamano_bytes
+```
+
+**Cálculo de memoria:**
+
+```
+Imagen de 1920x1080 (Full HD):
+
+Píxeles = 1920 × 1080 = 2,073,600 píxeles
+
+Valores RGB = 2,073,600 × 3 canales = 6,220,800 valores
+
+Bytes = 6,220,800 × 1 byte (uint8) = 6,220,800 bytes
+                                    = 6,075 KB
+                                    ≈ 5.93 MB sin comprimir
+```
+
+**Comparación con archivo PNG:**
+```
+En memoria (sin comprimir): 5.93 MB
+Archivo PNG (con comprimir): ~500 KB - 2 MB
+
+Compresión PNG: 3x - 12x más pequeño
+```
 
 ---
 
 ## gui_upload.py - Interfaz de Carga
 
 ### Propósito
-Ventana gráfica para seleccionar imágenes, mostrar preview, y guardarlas en la base de datos.
+Ventana gráfica para seleccionar imágenes, mostrar preview, y guardarlas en la base de datos. Usa **OpenCV para todo el procesamiento** y PIL solo para la conversión final a ImageTk.
 
 ### Imports
 
@@ -437,50 +852,48 @@ Ventana gráfica para seleccionar imágenes, mostrar preview, y guardarlas en la
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk
-from image_processor import load_and_convert_to_png, image_to_rgb_string
+import cv2
+from image_processor import cargar_imagen, imagen_a_string_rgb, calcular_tamano_imagen
 from database import save_image
 ```
 
-| Import | Uso |
-|--------|-----|
-| `tkinter` | Biblioteca GUI estándar de Python |
-| `filedialog` | Diálogo para seleccionar archivos |
-| `messagebox` | Ventanas de alerta/información |
-| `ImageTk` | Convertir PIL Image a formato Tkinter |
+| Import | Uso | Cuándo se usa |
+|--------|-----|---------------|
+| `tkinter` | Biblioteca GUI estándar de Python | Ventanas, botones, canvas |
+| `filedialog` | Diálogo para seleccionar archivos | Botón "Seleccionar Imagen" |
+| `messagebox` | Ventanas de alerta/información | Errores, confirmaciones |
+| `cv2` | OpenCV - Procesamiento de imágenes | **Todo el procesamiento** |
+| `ImageTk` | Convertir array NumPy a formato Tkinter | **Solo para mostrar en canvas** |
 
-### Sección 1: Inicialización de la Clase
+**Flujo de datos:**
+```
+Archivo → cv2 (OpenCV) → NumPy array → PIL → ImageTk → Tkinter Canvas
+          └────── Procesamiento ─────┘   └─ Solo conversión ─┘
+```
+
+### Arquitectura de la Clase
 
 ```python
 class UploadWindow:
     def __init__(self, parent=None):
-        """Inicializa la ventana de carga de imágenes."""
-        if parent:
-            self.window = tk.Toplevel(parent)
-        else:
-            self.window = tk.Tk()
-
-        self.window.title("Cargar Imagen - Image Decomposer")
-        self.window.geometry("600x500")
-
         # Variables de instancia
-        self.current_image = None
-        self.png_path = None
-        self.photo_image = None
-
-        self._setup_ui()
+        self.imagen_actual = None    # Array NumPy de OpenCV
+        self.ruta_imagen = None       # Path del archivo
+        self.photo_image = None       # ImageTk para Tkinter
 ```
 
-**Explicación:**
-- `parent` permite abrir como ventana secundaria o principal
-- `tk.Toplevel(parent)` → Ventana hija (no bloquea la principal)
-- `tk.Tk()` → Ventana principal
-- Variables de instancia guardan el estado actual
+**Tipos de datos:**
+```python
+self.imagen_actual: np.ndarray    # Array NumPy (alto, ancho, 3) uint8
+self.ruta_imagen: str             # "C:/fotos/imagen.jpg"
+self.photo_image: ImageTk.PhotoImage  # Objeto para Tkinter
+```
 
-### Sección 2: Seleccionar Imagen
+### Sección 1: Seleccionar y Cargar Imagen
 
 ```python
-def _select_image(self):
-    """Abre diálogo para seleccionar imagen y la procesa."""
+def _seleccionar_imagen(self):
+    """Abre diálogo para seleccionar imagen y la carga con OpenCV."""
     filetypes = [
         ("Imágenes", "*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp"),
         ("Todos los archivos", "*.*")
@@ -493,15 +906,19 @@ def _select_image(self):
 
     if filepath:
         try:
-            # Convertir a PNG
-            self.png_path, self.current_image = load_and_convert_to_png(filepath)
+            # Cargar imagen con OpenCV (retorna array NumPy RGB)
+            self.imagen_actual = cargar_imagen(filepath)
+            self.ruta_imagen = filepath
 
-            # Mostrar dimensiones
-            width, height = self.current_image.size
-            self.lbl_dimensions.config(text=f"Dimensiones: {width} x {height} píxeles")
+            # Obtener dimensiones (OpenCV usa shape)
+            alto, ancho = self.imagen_actual.shape[:2]
+            self.lbl_dimensions.config(text=f"Dimensiones: {ancho} x {alto} píxeles")
+
+            # Calcular tamaño en memoria
+            calcular_tamano_imagen(self.imagen_actual)
 
             # Mostrar preview
-            self._show_preview()
+            self._mostrar_preview()
 
             # Habilitar botón de guardar
             self.btn_save.config(state=tk.NORMAL)
@@ -510,32 +927,66 @@ def _select_image(self):
             messagebox.showerror("Error", f"Error al cargar imagen:\n{str(e)}")
 ```
 
-**Flujo:**
-```
-Usuario click "Seleccionar"
-         │
-         ▼
-    filedialog.askopenfilename()
-         │
-         ▼
-    ¿Seleccionó archivo?
-         │
-    Sí   │   No
-    ▼    └──────▶ (nada)
-load_and_convert_to_png()
-         │
-         ▼
-    Actualizar UI
-    - Mostrar preview
-    - Habilitar botón guardar
-```
+**Explicación detallada:**
 
-### Sección 3: Mostrar Preview
+#### 1. Diálogo de archivos
 
 ```python
-def _show_preview(self):
-    """Muestra la imagen en el canvas."""
-    if self.current_image is None:
+filepath = filedialog.askopenfilename(
+    title="Seleccionar imagen",
+    filetypes=[
+        ("Imágenes", "*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp"),
+        ("Todos los archivos", "*.*")
+    ]
+)
+```
+
+Abre un explorador de archivos nativo del sistema operativo:
+- Windows: Explorador de Windows
+- macOS: Finder
+- Linux: Diálogo GTK/Qt según el entorno
+
+#### 2. Cargar con OpenCV
+
+```python
+self.imagen_actual = cargar_imagen(filepath)
+```
+
+Internamente ejecuta:
+```python
+imagen = cv2.imread(filepath)           # Lee en BGR
+imagen_rgb = cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB)  # Convierte a RGB
+return imagen_rgb  # Array NumPy (alto, ancho, 3) uint8
+```
+
+#### 3. Obtener dimensiones
+
+```python
+alto, ancho = self.imagen_actual.shape[:2]
+```
+
+**Sintaxis de slicing:**
+```python
+self.imagen_actual.shape = (480, 640, 3)
+                            ↑    ↑    ↑
+                         alto ancho canales
+
+shape[:2] = (480, 640)  # Primeros 2 elementos
+            alto  ancho
+```
+
+Equivalente a:
+```python
+alto, ancho, canales = self.imagen_actual.shape
+# Pero solo necesitamos alto y ancho
+```
+
+### Sección 2: Mostrar Preview
+
+```python
+def _mostrar_preview(self):
+    """Muestra la imagen en el canvas usando OpenCV → PIL → ImageTk."""
+    if self.imagen_actual is None:
         return
 
     # Obtener tamaño del canvas
@@ -543,18 +994,22 @@ def _show_preview(self):
     canvas_height = self.canvas.winfo_height()
 
     # Calcular tamaño manteniendo proporción
-    img_width, img_height = self.current_image.size
-    ratio = min(canvas_width / img_width, canvas_height / img_height)
+    alto, ancho = self.imagen_actual.shape[:2]
+    ratio = min(canvas_width / ancho, canvas_height / alto)
 
-    new_width = int(img_width * ratio * 0.9)
-    new_height = int(img_height * ratio * 0.9)
+    nuevo_ancho = int(ancho * ratio * 0.9)
+    nuevo_alto = int(alto * ratio * 0.9)
 
-    # Redimensionar para preview
-    preview_img = self.current_image.copy()
-    preview_img.thumbnail((new_width, new_height), Image.Resampling.LANCZOS)
+    # Redimensionar con OpenCV
+    imagen_preview = cv2.resize(
+        self.imagen_actual, 
+        (nuevo_ancho, nuevo_alto),
+        interpolation=cv2.INTER_LANCZOS4
+    )
 
-    # Convertir a PhotoImage (formato Tkinter)
-    self.photo_image = ImageTk.PhotoImage(preview_img)
+    # Convertir NumPy array a PIL Image para Tkinter
+    img_pil = Image.fromarray(imagen_preview)
+    self.photo_image = ImageTk.PhotoImage(img_pil)
 
     # Mostrar en canvas
     self.canvas.delete("all")
@@ -566,41 +1021,170 @@ def _show_preview(self):
     )
 ```
 
-**Explicación del escalado:**
-```python
-ratio = min(canvas_width / img_width, canvas_height / img_height)
-```
+**Explicación paso a paso:**
 
-Si tenemos:
-- Canvas: 300x200
-- Imagen: 1000x500
-
-```
-ratio_ancho = 300/1000 = 0.3
-ratio_alto = 200/500 = 0.4
-ratio = min(0.3, 0.4) = 0.3
-
-Nueva imagen: 1000*0.3 x 500*0.3 = 300x150 (cabe en el canvas)
-```
-
-### Sección 4: Guardar en Base de Datos
+#### 1. Calcular ratio para mantener proporción
 
 ```python
-def _save_to_database(self):
-    """Procesa la imagen y la guarda en Supabase."""
-    if self.current_image is None:
+ratio = min(canvas_width / ancho, canvas_height / alto)
+```
+
+**Ejemplo:**
+```
+Canvas: 400x300 píxeles
+Imagen: 1920x1080 píxeles
+
+ratio_ancho = 400 / 1920 = 0.208
+ratio_alto  = 300 / 1080 = 0.278
+
+ratio = min(0.208, 0.278) = 0.208
+
+Nueva imagen: 1920 × 0.208 = 399 píxeles ancho
+             1080 × 0.208 = 224 píxeles alto
+
+Resultado: 399x224 cabe perfectamente en 400x300 ✅
+```
+
+**Si no usáramos `min()`, la imagen se saldría:**
+```
+Con ratio_alto = 0.278:
+Nueva imagen: 1920 × 0.278 = 533 píxeles ancho ❌ (se sale de 400)
+             1080 × 0.278 = 300 píxeles alto
+```
+
+#### 2. Multiplicar por 0.9 para márgenes
+
+```python
+nuevo_ancho = int(ancho * ratio * 0.9)
+nuevo_alto = int(alto * ratio * 0.9)
+```
+
+El `* 0.9` deja un 10% de margen para que no quede pegada a los bordes.
+
+#### 3. Redimensionar con OpenCV
+
+```python
+imagen_preview = cv2.resize(
+    self.imagen_actual, 
+    (nuevo_ancho, nuevo_alto),
+    interpolation=cv2.INTER_LANCZOS4
+)
+```
+
+**Métodos de interpolación en OpenCV:**
+
+| Método | Calidad | Velocidad | Uso |
+|--------|---------|-----------|-----|
+| `INTER_NEAREST` | Baja | Muy rápida | Píxel art, imágenes pequeñas |
+| `INTER_LINEAR` | Media | Rápida | Uso general |
+| `INTER_CUBIC` | Alta | Media | Reducir tamaño |
+| `INTER_LANCZOS4` | Muy alta | Lenta | **Calidad máxima (lo que usamos)** |
+| `INTER_AREA` | Alta | Rápida | Reducir tamaño (alternativa) |
+
+**¿Qué hace la interpolación?**
+
+Cuando redimensionas una imagen, debes "inventar" o "promediar" píxeles:
+
+```
+Original (4x4):          Redimensionada (2x2):
+┌─┬─┬─┬─┐               ┌───┬───┐
+│1│2│3│4│               │ ? │ ? │
+├─┼─┼─┼─┤     →         ├───┼───┤
+│5│6│7│8│               │ ? │ ? │
+├─┼─┼─┼─┤               └───┴───┘
+│9│A│B│C│               
+├─┼─┼─┼─┤               ¿Qué valores poner?
+│D│E│F│G│
+└─┴─┴─┴─┘
+
+INTER_NEAREST: Toma el píxel más cercano
+  [1, 3]
+  [9, B]
+
+INTER_LANCZOS4: Promedio ponderado de 4x4 vecinos
+  [promedio(1,2,5,6), promedio(3,4,7,8)]
+  [promedio(9,A,D,E), promedio(B,C,F,G)]
+  → Bordes más suaves
+```
+
+#### 4. Convertir a PIL para Tkinter (única razón de usar PIL)
+
+```python
+img_pil = Image.fromarray(imagen_preview)
+self.photo_image = ImageTk.PhotoImage(img_pil)
+```
+
+**¿Por qué este paso?**
+
+```python
+# Tkinter NO puede mostrar arrays NumPy directamente
+canvas.create_image(x, y, image=imagen_preview)  # ❌ TypeError
+
+# Tkinter SÍ puede mostrar ImageTk.PhotoImage
+img_pil = Image.fromarray(imagen_preview)  # NumPy → PIL
+photo = ImageTk.PhotoImage(img_pil)         # PIL → ImageTk
+canvas.create_image(x, y, image=photo)      # ✅ Funciona
+```
+
+**Es una limitación de Tkinter, no una elección de diseño.**
+
+**Alternativas que NO funcionan:**
+```python
+# Intentar usar NumPy directamente
+canvas.create_image(x, y, image=imagen_preview)  # ❌
+
+# Intentar usar OpenCV directamente
+cv2.imshow("Ventana", imagen_preview)  # ✅ Funciona pero...
+# → Abre ventana SEPARADA de OpenCV, no integra con Tkinter
+```
+
+#### 5. Mostrar en canvas
+
+```python
+self.canvas.delete("all")  # Borrar contenido anterior
+self.canvas.create_image(
+    canvas_width // 2,      # x: Centro horizontal
+    canvas_height // 2,     # y: Centro vertical
+    image=self.photo_image,
+    anchor=tk.CENTER        # Anclar desde el centro
+)
+```
+
+**Anchors en Tkinter:**
+```
+anchor=tk.NW (noroeste)    anchor=tk.N     anchor=tk.NE
+        ┌────────┐              ┌────────┐      ┌────────┐
+        │█       │              │   █    │      │       █│
+        
+anchor=tk.W                anchor=tk.CENTER    anchor=tk.E
+        ┌────────┐              ┌────────┐      ┌────────┐
+        │█       │              │   █    │      │       █│
+        
+anchor=tk.SW               anchor=tk.S         anchor=tk.SE
+        ┌────────┐              ┌────────┐      ┌────────┐
+        │       █│              │   █    │      │       █│
+
+█ = Punto de referencia
+```
+
+### Sección 3: Guardar en Base de Datos
+
+```python
+def _guardar_en_bd(self):
+    """Descompone la imagen con OpenCV y guarda en Supabase."""
+    if self.imagen_actual is None:
         return
 
     try:
         # Deshabilitar botón mientras procesa
         self.btn_save.config(state=tk.DISABLED, text="Procesando...")
-        self.window.update()
+        self.window.update()  # Forzar actualización de UI
 
-        # Convertir imagen a string RGB
-        rgb_string, width, height = image_to_rgb_string(self.current_image)
+        # Descomponer imagen (OpenCV/NumPy)
+        rgb_string, ancho, alto = imagen_a_string_rgb(self.imagen_actual)
 
         # Guardar en base de datos
-        image_id = save_image(width, height, rgb_string)
+        image_id = save_image(ancho, alto, rgb_string)
 
         # Mostrar ID generado
         self.lbl_id.config(text=f"Imagen guardada con ID: {image_id}")
@@ -615,20 +1199,45 @@ def _save_to_database(self):
 ```
 
 **Flujo completo:**
+
 ```
-current_image (PIL)
-       │
-       ▼
-image_to_rgb_string()
-       │
-       ▼
-(rgb_string, width, height)
-       │
-       ▼
-save_image(width, height, rgb_string)
-       │
-       ▼
-    ID generado
+self.imagen_actual (NumPy array RGB)
+        │
+        ▼
+imagen_a_string_rgb()  [OpenCV/NumPy]
+        │
+        ├─→ imagen.flatten()
+        ├─→ ",".join(map(str, flat))
+        │
+        ▼
+(rgb_string, ancho, alto)
+        │
+        ▼
+save_image(ancho, alto, rgb_string)  [Supabase]
+        │
+        ▼
+ID generado
+```
+
+**¿Por qué `self.window.update()`?**
+
+```python
+self.btn_save.config(text="Procesando...")
+self.window.update()  # Sin esto, el texto no cambia hasta que termine
+```
+
+Tkinter es de un solo hilo. Si no llamas a `.update()`, los cambios visuales se quedan "pendientes" hasta que termine la función:
+
+```python
+# Sin update()
+self.btn_save.config(text="Procesando...")  # Se queda pendiente
+time.sleep(5)  # Usuario ve el botón sin cambiar
+# Al terminar, cambia por un instante y vuelve a "Guardar..."
+
+# Con update()
+self.btn_save.config(text="Procesando...")
+self.window.update()  # ✅ Cambia inmediatamente
+time.sleep(5)  # Usuario VE "Procesando..."
 ```
 
 ---
@@ -636,13 +1245,13 @@ save_image(width, height, rgb_string)
 ## gui_viewer.py - Interfaz de Visualización
 
 ### Propósito
-Ventana para consultar imágenes por ID y mostrar la reconstrucción.
+Ventana para consultar imágenes por ID, reconstruirlas desde la base de datos usando **OpenCV/NumPy**, y mostrarlas. PIL solo se usa para la conversión a ImageTk.
 
-### Sección Principal: Consultar Imagen
+### Sección Principal: Consultar y Reconstruir Imagen
 
 ```python
-def _query_image(self):
-    """Consulta la imagen por ID y la muestra."""
+def _consultar_imagen(self):
+    """Consulta la imagen por ID, la reconstruye con OpenCV y la muestra."""
     id_text = self.entry_id.get().strip()
 
     if not id_text:
@@ -660,38 +1269,278 @@ def _query_image(self):
         image_data = get_image(image_id)
 
         # Extraer datos
-        width = image_data["width"]
-        height = image_data["height"]
+        ancho = image_data["width"]
+        alto = image_data["height"]
         rgb_string = image_data["rgb_data"]
 
-        # Reconstruir imagen
-        self.current_image = rgb_string_to_image(rgb_string, width, height)
+        # Reconstruir imagen con OpenCV/NumPy
+        self.imagen_actual = string_rgb_a_imagen(rgb_string, ancho, alto)
+
+        # Mostrar información
+        self.lbl_info.config(
+            text=f"Dimensiones: {ancho}x{alto} | "
+                 f"Valores RGB: {len(rgb_string.split(','))}"
+        )
 
         # Mostrar imagen
-        self._show_image()
+        self._mostrar_imagen()
 
     except Exception as e:
         messagebox.showerror("Error", f"Error al consultar:\n{str(e)}")
 ```
 
-**Flujo de reconstrucción:**
+**Flujo de reconstrucción completo:**
+
 ```
-ID ingresado por usuario
-         │
-         ▼
-    get_image(id)
-         │
-         ▼
-{width, height, rgb_data}
-         │
-         ▼
-rgb_string_to_image(rgb_data, width, height)
-         │
-         ▼
-    PIL Image
-         │
-         ▼
-  Mostrar en canvas
+ID ingresado por usuario (texto)
+        │
+        ├─→ Validar que sea entero
+        │
+        ▼
+get_image(id)  [Consulta Supabase]
+        │
+        ▼
+{
+  "id": 1,
+  "width": 640,
+  "height": 480,
+  "rgb_data": "255,0,0,0,255,0,...",
+  "created_at": "2024-..."
+}
+        │
+        ▼
+string_rgb_a_imagen(rgb_data, width, height)  [OpenCV/NumPy]
+        │
+        ├─→ rgb_string.split(",")          # String → Lista
+        ├─→ np.array(valores, dtype=uint8) # Lista → Array NumPy
+        ├─→ arr.reshape((alto, ancho, 3))  # 1D → 3D
+        │
+        ▼
+Array NumPy RGB (alto, ancho, 3) uint8
+        │
+        ├─→ cv2.resize() si es necesario
+        ├─→ Image.fromarray()  # NumPy → PIL
+        ├─→ ImageTk.PhotoImage()  # PIL → ImageTk
+        │
+        ▼
+Mostrar en Tkinter Canvas
+```
+
+### Detalle de cada paso:
+
+#### 1. Validación del ID
+
+```python
+id_text = self.entry_id.get().strip()
+
+if not id_text:
+    messagebox.showwarning("Advertencia", "Ingresa un ID de imagen")
+    return
+
+try:
+    image_id = int(id_text)
+except ValueError:
+    messagebox.showerror("Error", "El ID debe ser un número entero")
+    return
+```
+
+**Casos que maneja:**
+
+| Input | Resultado |
+|-------|-----------|
+| `"  123  "` | `image_id = 123` ✅ (strip elimina espacios) |
+| `"abc"` | ValueError → Mensaje de error ❌ |
+| `""` | Warning "Ingresa un ID" ❌ |
+| `"12.5"` | ValueError (no es entero) ❌ |
+| `"0"` | `image_id = 0` ✅ (válido aunque probablemente no exista) |
+
+#### 2. Consultar base de datos
+
+```python
+image_data = get_image(image_id)
+```
+
+**Internamente ejecuta:**
+```python
+response = client.table("images")\
+    .select("*")\
+    .eq("id", image_id)\
+    .execute()
+```
+
+**Retorna un diccionario:**
+```python
+{
+    "id": 1,
+    "width": 640,
+    "height": 480,
+    "rgb_data": "255,0,0,0,255,0,0,0,255,...",  # String MUY largo
+    "created_at": "2024-01-15T10:30:00.000Z"
+}
+```
+
+**Tamaño del string:**
+```python
+# Imagen 640x480
+valores = 640 × 480 × 3 = 921,600 valores
+string = "255,0,0,..." con comas = ~3.5 MB de texto
+
+# PostgreSQL puede almacenar hasta 1 GB por campo TEXT
+# → No hay problema de capacidad
+```
+
+#### 3. Reconstruir imagen
+
+```python
+self.imagen_actual = string_rgb_a_imagen(rgb_string, ancho, alto)
+```
+
+**Internamente:**
+
+```python
+def string_rgb_a_imagen(rgb_string: str, ancho: int, alto: int):
+    # 1. Parsear string
+    valores = list(map(int, rgb_string.split(",")))
+    # "255,0,0" → [255, 0, 0]
+    
+    # 2. Crear array NumPy
+    arr = np.array(valores, dtype=np.uint8)
+    # [255, 0, 0, ...] shape: (921600,)
+    
+    # 3. Reshape a imagen 3D
+    imagen = arr.reshape((alto, ancho, 3))
+    # shape: (480, 640, 3)
+    
+    return imagen  # Array NumPy RGB
+```
+
+**Proceso visual:**
+
+```
+String en BD:
+"255,0,0,0,255,0,0,0,255,255,255,0,0,255,255,255,0,255"
+
+    ↓ split(",")
+
+Lista de strings:
+["255", "0", "0", "0", "255", "0", ...]
+
+    ↓ map(int, ...)
+
+Lista de enteros:
+[255, 0, 0, 0, 255, 0, ...]
+
+    ↓ np.array(..., dtype=np.uint8)
+
+Array 1D:
+[255 0 0 0 255 0 ...] shape: (18,)
+
+    ↓ reshape((2, 3, 3))
+
+Array 3D (imagen):
+[
+  [[255,0,0], [0,255,0], [0,0,255]],     # Fila 0
+  [[255,255,0], [0,255,255], [255,0,255]] # Fila 1
+]
+shape: (2, 3, 3)
+```
+
+#### 4. Mostrar información
+
+```python
+self.lbl_info.config(
+    text=f"Dimensiones: {ancho}x{alto} | "
+         f"Valores RGB: {len(rgb_string.split(','))}"
+)
+```
+
+**Ejemplo de salida:**
+```
+Dimensiones: 640x480 | Valores RGB: 921,600
+```
+
+### Mostrar Imagen Reconstruida
+
+```python
+def _mostrar_imagen(self):
+    """Muestra la imagen reconstruida en el canvas."""
+    if self.imagen_actual is None:
+        return
+
+    # Obtener tamaño del canvas
+    canvas_width = self.canvas.winfo_width()
+    canvas_height = self.canvas.winfo_height()
+
+    # Calcular redimensionamiento
+    alto, ancho = self.imagen_actual.shape[:2]
+    ratio = min(canvas_width / ancho, canvas_height / alto)
+
+    nuevo_ancho = int(ancho * ratio * 0.9)
+    nuevo_alto = int(alto * ratio * 0.9)
+
+    # Redimensionar con OpenCV
+    imagen_preview = cv2.resize(
+        self.imagen_actual,
+        (nuevo_ancho, nuevo_alto),
+        interpolation=cv2.INTER_LANCZOS4
+    )
+
+    # Convertir NumPy → PIL → ImageTk (solo para Tkinter)
+    img_pil = Image.fromarray(imagen_preview)
+    self.photo_image = ImageTk.PhotoImage(img_pil)
+
+    # Mostrar en canvas
+    self.canvas.delete("all")
+    self.canvas.create_image(
+        canvas_width // 2,
+        canvas_height // 2,
+        image=self.photo_image,
+        anchor=tk.CENTER
+    )
+```
+
+**Comparación: Imagen Original vs Reconstruida**
+
+```
+Imagen Original (archivo JPG/PNG):
+  - Puede tener compresión con pérdida (JPG)
+  - Puede tener metadatos EXIF
+  - Tamaño: ~100 KB - 2 MB
+
+        ↓ Cargar con cv2.imread()
+        ↓ Convertir BGR → RGB
+        ↓ Descomponer a string RGB
+        ↓ Guardar en BD
+
+String en BD:
+  - Sin compresión
+  - Sin metadatos
+  - Valores RGB puros
+  - Tamaño: ~3.5 MB (texto)
+
+        ↓ Consultar de BD
+        ↓ Reconstruir con NumPy
+        ↓ Reshape a imagen
+
+Imagen Reconstruida (NumPy array):
+  - Idéntica píxel por píxel a la cargada
+  - Sin pérdida de calidad
+  - Lista para procesar o guardar
+```
+
+**¿Se pierde calidad?**
+
+```python
+# NO, si guardas y reconstruyes en el mismo formato
+
+Imagen original → cv2.imread() → Array NumPy → flatten() → String
+                                      ↓
+                                 [255, 0, 0, ...]
+                                      ↑
+String → split() → Array NumPy → reshape() → Imagen reconstruida
+
+Comparación:
+np.array_equal(imagen_original, imagen_reconstruida)  # True ✅
 ```
 
 ---
@@ -754,29 +1603,434 @@ __name__ == "main"  # False, no ejecuta main()
 
 ---
 
-## Resumen de Flujos
+---
 
-### Flujo de Carga Completo
+## Conceptos Avanzados de OpenCV
+
+### 1. BGR vs RGB - ¿Por qué OpenCV es diferente?
+
+**Historia:**
+OpenCV fue creado a finales de los 90. Las cámaras de video analógicas de esa época usaban señales BGR (Blue-Green-Red) por razones de compatibilidad con televisores antiguos.
+
+**Implicaciones:**
+
+```python
+# Leer imagen
+imagen = cv2.imread("foto.jpg")  # Lee en BGR
+
+# Ver el color de un píxel rojo puro
+print(imagen[0, 0])  # [0, 0, 255] ← [B, G, R]
+
+# Sin conversión, se vería azul
+plt.imshow(imagen)  # ❌ Colores invertidos
+
+# Conversión correcta
+imagen_rgb = cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB)
+plt.imshow(imagen_rgb)  # ✅ Colores correctos
+```
+
+**Tabla de conversiones comunes:**
+
+| Desde | Hacia | Código OpenCV |
+|-------|-------|---------------|
+| BGR | RGB | `cv2.COLOR_BGR2RGB` |
+| RGB | BGR | `cv2.COLOR_RGB2BGR` |
+| BGR | Grises | `cv2.COLOR_BGR2GRAY` |
+| RGB | HSV | `cv2.COLOR_RGB2HSV` |
+| Grises | BGR | `cv2.COLOR_GRAY2BGR` |
+
+### 2. Shape, Dtype y Size en NumPy
+
+#### Shape - Dimensiones del array
+
+```python
+imagen.shape  # (alto, ancho, canales)
+```
+
+**Diferentes tipos de imágenes:**
+
+```python
+# Imagen a color
+imagen_rgb.shape = (480, 640, 3)
+                   alto  ancho  RGB
+
+# Imagen en escala de grises
+imagen_gray.shape = (480, 640)
+                    alto  ancho (sin canal)
+
+# Imagen con transparencia
+imagen_rgba.shape = (480, 640, 4)
+                    alto  ancho  RGBA
+
+# Video frame (mismo que imagen)
+frame.shape = (1080, 1920, 3)
+              alto   ancho  RGB
+```
+
+#### Dtype - Tipo de datos
+
+```python
+imagen.dtype  # uint8, uint16, float32, etc.
+```
+
+**Tipos comunes:**
+
+| Tipo | Rango | Bytes | Uso |
+|------|-------|-------|-----|
+| `uint8` | 0 - 255 | 1 | **Imágenes estándar RGB** |
+| `uint16` | 0 - 65,535 | 2 | Imágenes médicas, RAW |
+| `float32` | 0.0 - 1.0 | 4 | Procesamiento intermedio |
+| `float64` | 0.0 - 1.0 | 8 | Alta precisión (raro) |
+
+**Conversiones:**
+
+```python
+# uint8 (0-255) a float32 (0.0-1.0)
+imagen_float = imagen.astype(np.float32) / 255.0
+
+# float32 (0.0-1.0) a uint8 (0-255)
+imagen_uint8 = (imagen_float * 255).astype(np.uint8)
+```
+
+#### Size - Total de elementos
+
+```python
+imagen.size = alto × ancho × canales
+```
+
+**Cálculo de memoria:**
+
+```python
+imagen.shape = (1080, 1920, 3)
+imagen.dtype = uint8
+
+Total elementos = 1080 × 1920 × 3 = 6,220,800
+Bytes por elemento = 1 byte (uint8)
+Memoria total = 6,220,800 bytes = 6.22 MB
+
+# Verificar
+imagen.nbytes  # 6220800
+```
+
+### 3. Indexing y Slicing - Acceso a píxeles
+
+#### Sintaxis básica
+
+```python
+imagen[fila, columna, canal]
+```
+
+**Ejemplos:**
+
+```python
+# Acceder a un píxel específico (fila 100, columna 200)
+pixel = imagen[100, 200]  # [R, G, B]
+
+# Acceder al valor rojo de ese píxel
+rojo = imagen[100, 200, 0]
+
+# Cambiar un píxel a blanco
+imagen[100, 200] = [255, 255, 255]
+
+# Región rectangular (ROI - Region of Interest)
+region = imagen[100:200, 300:400]  # Filas 100-199, Columnas 300-399
+
+# Primer canal (rojo) completo
+canal_rojo = imagen[:, :, 0]
+
+# Invertir imagen verticalmente
+imagen_invertida = imagen[::-1, :, :]
+
+# Invertir imagen horizontalmente (espejo)
+imagen_espejo = imagen[:, ::-1, :]
+```
+
+**Visualización de slicing:**
 
 ```
-1. Usuario abre main.py
-2. Click "Cargar Imagen" → Abre gui_upload.py
-3. Click "Seleccionar" → filedialog
-4. Selecciona archivo → load_and_convert_to_png()
-5. Muestra preview
-6. Click "Guardar" → image_to_rgb_string() → save_image()
-7. Muestra ID generado
+Imagen completa:         Región [100:200, 300:400]:
+  0  100 200 300 400        300      400
+0 ┌───────────────────┐   ┌──────────┐
+  │                   │   │          │
+100 │     ┌────────┐  │   │ Extraída │
+  │     │▓▓▓▓▓▓▓▓│  │   │          │
+200 │     └────────┘  │   └──────────┘
+  │                   │
+  └───────────────────┘
 ```
 
-### Flujo de Consulta Completo
+### 4. Flatten y Reshape - Transformaciones
+
+#### Flatten - 3D a 1D
+
+```python
+flat = imagen.flatten()
+```
+
+**Visualización:**
+
+```python
+imagen.shape = (2, 3, 3)  # 2 filas, 3 columnas, 3 canales
+
+Imagen 3D:
+Fila 0: [[255,0,0], [0,255,0], [0,0,255]]
+Fila 1: [[255,255,0], [0,255,255], [255,0,255]]
+
+flat.shape = (18,)  # Vector 1D
+
+[255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 0, 0, 255, 255, 255, 0, 255]
+ └─ P0 ─┘  └─ P1 ─┘  └─ P2 ─┘  └─  P3  ─┘  └─  P4  ─┘  └─  P5  ─┘
+```
+
+**Orden de lectura (row-major / C order):**
+```
+1. Lee fila 0, columna 0, todos los canales: [255, 0, 0]
+2. Lee fila 0, columna 1, todos los canales: [0, 255, 0]
+3. Lee fila 0, columna 2, todos los canales: [0, 0, 255]
+4. Lee fila 1, columna 0, todos los canales: [255, 255, 0]
+... y así sucesivamente
+```
+
+#### Reshape - Cambiar forma sin copiar datos
+
+```python
+nueva_forma = arr.reshape((nuevo_alto, nuevo_ancho, 3))
+```
+
+**Ejemplo práctico:**
+
+```python
+# Vector 1D de 18 elementos
+arr = np.array([255,0,0, 0,255,0, 0,0,255, 255,255,0, 0,255,255, 255,0,255])
+
+# Reshape a diferentes formas (todas válidas)
+img_2x3 = arr.reshape((2, 3, 3))  # 2×3×3 = 18 ✅
+img_3x2 = arr.reshape((3, 2, 3))  # 3×2×3 = 18 ✅
+img_1x6 = arr.reshape((1, 6, 3))  # 1×6×3 = 18 ✅
+
+# Reshape inválido
+img_4x4 = arr.reshape((4, 4, 3))  # 4×4×3 = 48 ❌ ValueError
+```
+
+**Reshape no copia datos (eficiente):**
+
+```python
+original = np.array([1, 2, 3, 4, 5, 6])
+reshaped = original.reshape((2, 3))
+
+reshaped[0, 0] = 99
+print(original)  # [99, 2, 3, 4, 5, 6] ← ¡También cambió!
+
+# Son dos "vistas" del mismo bloque de memoria
+```
+
+### 5. Interpolación en resize()
+
+Cuando redimensionas una imagen, necesitas "inventar" píxeles nuevos (aumentar tamaño) o "combinar" píxeles existentes (reducir tamaño).
+
+#### Métodos disponibles
+
+```python
+cv2.resize(imagen, (nuevo_ancho, nuevo_alto), interpolation=METODO)
+```
+
+| Método | Calidad | Velocidad | Mejor para |
+|--------|---------|-----------|------------|
+| `INTER_NEAREST` | ⭐ | ⚡⚡⚡⚡⚡ | Píxel art, imágenes pequeñas, aumentar tamaño conservando píxeles |
+| `INTER_LINEAR` | ⭐⭐⭐ | ⚡⚡⚡⚡ | Uso general, buen balance |
+| `INTER_CUBIC` | ⭐⭐⭐⭐ | ⚡⚡⚡ | Reducir tamaño, alta calidad |
+| `INTER_LANCZOS4` | ⭐⭐⭐⭐⭐ | ⚡⚡ | **Máxima calidad, previews, impresión** |
+| `INTER_AREA` | ⭐⭐⭐⭐ | ⚡⚡⚡⚡ | Reducir tamaño rápidamente |
+
+#### Ejemplos visuales
+
+**Aumentar tamaño (upscaling) 2x2 → 4x4:**
 
 ```
-1. Usuario abre main.py
-2. Click "Ver Imagen" → Abre gui_viewer.py
-3. Ingresa ID
-4. Click "Consultar" → get_image()
-5. Obtiene datos → rgb_string_to_image()
-6. Muestra imagen reconstruida
+Original:           INTER_NEAREST:      INTER_LANCZOS4:
+┌──┬──┐            ┌──┬──┬──┬──┐       ┌──┬──┬──┬──┐
+│■ │  │            │■ │■ │  │  │       │■ │▓ │░ │  │
+├──┼──┤     →      │■ │■ │  │  │       │▓ │▒ │░ │░ │
+│  │▓ │            │  │  │▓ │▓ │       │░ │░ │▒ │▓ │
+└──┴──┘            │  │  │▓ │▓ │       │  │░ │▓ │▓ │
+                   └──┴──┴──┴──┘       └──┴──┴──┴──┘
+                   Pixelado            Suave
+```
+
+**Reducir tamaño (downscaling) 4x4 → 2x2:**
+
+```
+Original:           INTER_AREA:         INTER_NEAREST:
+┌──┬──┬──┬──┐      ┌──┬──┐            ┌──┬──┐
+│■ │▓ │░ │  │      │▒ │░ │            │■ │░ │
+│▓ │▒ │░ │░ │  →   │░ │▒ │            │  │▓ │
+│░ │░ │▒ │▓ │      └──┴──┘            └──┴──┘
+│  │░ │▓ │▓ │      Promediado         Píxeles saltados
+└──┴──┴──┴──┘
+```
+
+#### ¿Cuál usar?
+
+```python
+# Máxima calidad (previews, interfaz usuario)
+cv2.resize(img, (ancho, alto), interpolation=cv2.INTER_LANCZOS4)
+
+# Balance calidad/velocidad (procesamiento en tiempo real)
+cv2.resize(img, (ancho, alto), interpolation=cv2.INTER_LINEAR)
+
+# Reducir tamaño rápido (miniaturas, batch processing)
+cv2.resize(img, (ancho, alto), interpolation=cv2.INTER_AREA)
+
+# Píxel art / imágenes de juegos retro
+cv2.resize(img, (ancho, alto), interpolation=cv2.INTER_NEAREST)
+```
+
+### 6. Operaciones matemáticas con arrays
+
+#### Operaciones elemento por elemento
+
+```python
+# Dividir por 2 (oscurecer imagen)
+imagen_oscura = imagen // 2
+
+# Multiplicar por 1.5 (aclarar)
+imagen_clara = np.clip(imagen * 1.5, 0, 255).astype(np.uint8)
+
+# Invertir colores (negativo)
+imagen_negativa = 255 - imagen
+
+# Binarizar (blanco o negro)
+imagen_binaria = np.where(imagen > 127, 255, 0).astype(np.uint8)
+```
+
+#### Operaciones entre imágenes
+
+```python
+# Promedio de dos imágenes (blend 50/50)
+blend = cv2.addWeighted(img1, 0.5, img2, 0.5, 0)
+
+# Diferencia absoluta
+diferencia = cv2.absdiff(img1, img2)
+
+# Máscara (mostrar solo donde mask > 0)
+resultado = cv2.bitwise_and(imagen, imagen, mask=mascara)
+```
+
+#### Estadísticas
+
+```python
+# Valor mínimo, máximo, promedio
+min_val = np.min(imagen)
+max_val = np.max(imagen)
+promedio = np.mean(imagen)
+
+# Por canal
+promedio_r = np.mean(imagen[:, :, 0])
+promedio_g = np.mean(imagen[:, :, 1])
+promedio_b = np.mean(imagen[:, :, 2])
+
+# Desviación estándar (contraste)
+std = np.std(imagen)
+```
+
+### 7. Espacios de color
+
+OpenCV puede convertir entre múltiples espacios de color:
+
+#### RGB vs HSV
+
+```python
+# RGB: Red, Green, Blue (colores luz)
+rgb = [255, 0, 0]  # Rojo puro
+
+# HSV: Hue, Saturation, Value (tono, saturación, brillo)
+hsv = cv2.cvtColor(imagen_rgb, cv2.COLOR_RGB2HSV)
+```
+
+**¿Cuándo usar HSV?**
+
+HSV es mejor para:
+- Detección de objetos por color (range de colores)
+- Ajustar brillo sin cambiar el color
+- Segmentación por color
+
+```python
+# Ejemplo: Detectar objetos rojos
+hsv = cv2.cvtColor(imagen, cv2.COLOR_BGR2HSV)
+rojo_bajo = np.array([0, 100, 100])
+rojo_alto = np.array([10, 255, 255])
+mascara = cv2.inRange(hsv, rojo_bajo, rojo_alto)
+```
+
+#### Escala de grises
+
+```python
+# Conversión a grises
+gris = cv2.cvtColor(imagen_rgb, cv2.COLOR_RGB2GRAY)
+
+# Fórmula: Gris = 0.299*R + 0.587*G + 0.114*B
+# (Pondera más el verde porque el ojo humano es más sensible)
+```
+
+---
+
+## Resumen de Flujos Completos
+
+### Flujo de Carga (con OpenCV)
+
+```
+1. Usuario: main.py → Click "Cargar Imagen"
+2. GUI: gui_upload.py → Abre ventana
+3. Usuario: Click "Seleccionar" → filedialog
+4. GUI: filepath seleccionado
+5. Procesador: cv2.imread(filepath) → Array NumPy BGR
+6. Procesador: cv2.cvtColor(BGR → RGB) → Array NumPy RGB
+7. GUI: Mostrar dimensiones, calcular tamaño
+8. GUI: cv2.resize() + Image.fromarray() + ImageTk → Mostrar preview
+9. Usuario: Click "Guardar"
+10. Procesador: imagen.flatten() → Vector 1D
+11. Procesador: ",".join() → String RGB
+12. Database: INSERT en Supabase
+13. Database: Retorna ID
+14. GUI: Mostrar ID generado
+```
+
+### Flujo de Consulta (con OpenCV)
+
+```
+1. Usuario: main.py → Click "Ver Imagen"
+2. GUI: gui_viewer.py → Abre ventana
+3. Usuario: Ingresa ID → Click "Consultar"
+4. GUI: Validar ID (int)
+5. Database: SELECT de Supabase
+6. Database: Retorna {width, height, rgb_data}
+7. Procesador: rgb_data.split(",") → Lista
+8. Procesador: np.array(..., uint8) → Array 1D
+9. Procesador: arr.reshape(alto, ancho, 3) → Array 3D
+10. GUI: cv2.resize() + Image.fromarray() + ImageTk → Mostrar
+11. Usuario: Ve imagen reconstruida (idéntica al original)
+```
+
+---
+
+## Comparación: OpenCV vs PIL
+
+| Aspecto | OpenCV (cv2) | PIL/Pillow |
+|---------|--------------|------------|
+| **Formato de datos** | NumPy array (alto, ancho, 3) | Objeto Image |
+| **Orden de canales** | BGR por defecto | RGB |
+| **Rendimiento** | ⚡⚡⚡⚡⚡ C/C++ optimizado | ⚡⚡⚡ Python |
+| **Operaciones** | Miles (filtros, detección, etc.) | Básicas (abrir, guardar, redimensionar) |
+| **Integración NumPy** | Nativa | Requiere conversión |
+| **Lectura de archivos** | `cv2.imread()` | `Image.open()` |
+| **Redimensionar** | `cv2.resize()` | `img.thumbnail()` / `img.resize()` |
+| **Conversión de color** | `cv2.cvtColor()` | `img.convert()` |
+| **Mostrar en Tkinter** | ❌ Necesita conversión a PIL | ✅ Via ImageTk |
+
+**Decisión de arquitectura:**
+```
+Procesamiento pesado → OpenCV (rápido, potente)
+Mostrar en Tkinter → PIL/ImageTk (único compatible)
 ```
 
 ---
@@ -785,11 +2039,44 @@ __name__ == "main"  # False, no ejecuta main()
 
 | Concepto | Dónde se usa | Explicación |
 |----------|--------------|-------------|
-| Singleton | `database.py` | Una sola instancia de conexión |
-| Type hints | `def func() -> int:` | Indica tipos de retorno |
-| Docstrings | `"""texto"""` | Documentación de funciones |
-| Try/except | GUI handlers | Manejo de errores |
-| Global | `global _client` | Modificar variable global |
-| f-strings | `f"ID: {id}"` | Interpolación de strings |
-| Ternary | `x if cond else y` | Condicional en una línea |
-| List comprehension | `[x for x in list]` | Crear listas compactas |
+| **Singleton** | `database.py` | Una sola instancia de conexión a BD |
+| **Type hints** | `def func() -> int:` | Documenta tipos de entrada/salida |
+| **Docstrings** | `"""texto"""` | Documentación de funciones |
+| **Try/except** | Todos los handlers de GUI | Manejo de errores robusto |
+| **Global** | `global _client` | Modificar variable global (singleton) |
+| **f-strings** | `f"ID: {id}"` | Interpolación de strings |
+| **List comprehension** | `[x for x in list]` | Crear listas compactas |
+| **map()** | `map(str, flat)` | Aplicar función a iterable |
+| **Lambda** | Tkinter callbacks | Funciones anónimas |
+| **Context managers** | (no usado pero útil) | `with open() as f:` |
+
+---
+
+## Conceptos Clave de OpenCV/NumPy Usados
+
+| Concepto | Código | Explicación |
+|----------|--------|-------------|
+| **Shape** | `imagen.shape` | Dimensiones: (alto, ancho, canales) |
+| **Dtype** | `dtype=np.uint8` | Tipo de datos: 0-255 |
+| **Slicing** | `imagen[:, :, 0]` | Extraer canal rojo |
+| **Flatten** | `imagen.flatten()` | 3D → 1D |
+| **Reshape** | `arr.reshape((h,w,3))` | 1D → 3D |
+| **cvtColor** | `cv2.cvtColor(img, cv2.COLOR_BGR2RGB)` | Conversión BGR→RGB |
+| **resize** | `cv2.resize(img, (w,h), interpolation)` | Cambiar tamaño |
+| **imread** | `cv2.imread(path)` | Leer imagen (BGR) |
+
+---
+
+## Apéndice: Tamaños de Imágenes Comunes
+
+| Resolución | Dimensiones | Píxeles | Memoria sin comprimir (RGB) |
+|------------|-------------|---------|------------------------------|
+| HD Ready | 1280 × 720 | 921,600 | 2.64 MB |
+| Full HD | 1920 × 1080 | 2,073,600 | 5.93 MB |
+| 2K | 2560 × 1440 | 3,686,400 | 10.55 MB |
+| 4K UHD | 3840 × 2160 | 8,294,400 | 23.73 MB |
+| 8K UHD | 7680 × 4320 | 33,177,600 | 94.92 MB |
+
+**Nota:** Archivos PNG/JPG son mucho más pequeños debido a compresión (3x - 20x).
+
+---
