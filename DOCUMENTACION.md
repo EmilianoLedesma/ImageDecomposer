@@ -142,17 +142,15 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 ```python
 def validate_config():
-    """Verifica que las credenciales de Supabase estén configuradas."""
-    if not SUPABASE_URL or SUPABASE_URL == "tu_url_aqui":
-        raise ValueError("SUPABASE_URL no está configurado en el archivo .env")
-    if not SUPABASE_KEY or SUPABASE_KEY == "tu_anon_key_aqui":
-        raise ValueError("SUPABASE_KEY no está configurado en el archivo .env")
-    return True
+    ### Verifica que las credenciales de Supabase esten configuradas
+    if not SUPABASE_URL:
+        raise ValueError("SUPABASE_URL no esta configurado en el archivo .env")
+    if not SUPABASE_KEY:
+        raise ValueError("SUPABASE_KEY no esta configurado en el archivo .env")
 ```
 
 **Explicación:**
 - Verifica que las variables no estén vacías (`not SUPABASE_URL`)
-- Verifica que no sean los valores placeholder del template
 - `raise ValueError` lanza un error descriptivo si algo falla
 - Se usa antes de conectar a Supabase para dar errores claros
 
@@ -166,35 +164,34 @@ Maneja toda la comunicación con la base de datos Supabase. Aísla la lógica de
 ### Imports
 
 ```python
-from supabase import create_client, Client
+from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_KEY, validate_config
 ```
 
 | Import | Uso |
 |--------|-----|
 | `create_client` | Función para crear conexión a Supabase |
-| `Client` | Tipo de dato para type hints |
 | `config.*` | Credenciales y validación |
 
 ### Sección 1: Cliente Singleton
 
 ```python
-_client: Client = None
+cliente = None
 
-def init_client() -> Client:
-    """Inicializa y retorna el cliente de Supabase."""
-    global _client
-    if _client is None:
+def init_client():
+    ### Inicializa y retorna el cliente de Supabase
+    global cliente
+    if cliente is None:
         validate_config()
-        _client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    return _client
+        cliente = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return cliente
 ```
 
 **Explicación:**
-- `_client` es una variable global (el guion bajo indica que es "privada")
+- `cliente` es una variable global
 - **Patrón Singleton**: Solo se crea UNA conexión, sin importar cuántas veces se llame
-- `global _client` permite modificar la variable global dentro de la función
-- Si ya existe conexión (`_client is not None`), la reutiliza
+- `global cliente` permite modificar la variable global dentro de la función
+- Si ya existe conexión (`cliente is not None`), la reutiliza
 
 **¿Por qué Singleton?**
 ```python
@@ -210,8 +207,8 @@ cliente2 = init_client()  # Retorna la misma conexión
 ### Sección 2: Guardar Imagen
 
 ```python
-def save_image(width: int, height: int, rgb_data: str) -> int:
-    """Guarda los datos de una imagen en Supabase."""
+def save_image(width, height, rgb_data):
+    ### Guarda los datos de una imagen en Supabase, retorna el ID
     client = init_client()
 
     data = {
@@ -222,7 +219,7 @@ def save_image(width: int, height: int, rgb_data: str) -> int:
 
     response = client.table("images").insert(data).execute()
 
-    if response.data and len(response.data) > 0:
+    if response.data:
         return response.data[0]["id"]
     else:
         raise Exception("Error al guardar la imagen en la base de datos")
@@ -249,16 +246,16 @@ RETURNING id;
 ### Sección 3: Obtener Imagen
 
 ```python
-def get_image(image_id: int) -> dict:
-    """Recupera los datos de una imagen por su ID."""
+def get_image(image_id):
+    ### Recupera los datos de una imagen por su ID
     client = init_client()
 
     response = client.table("images").select("*").eq("id", image_id).execute()
 
-    if response.data and len(response.data) > 0:
+    if response.data:
         return response.data[0]
     else:
-        raise Exception(f"No se encontró imagen con ID: {image_id}")
+        raise Exception(f"No se encontro imagen con ID: {image_id}")
 ```
 
 **Explicación:**
@@ -290,197 +287,27 @@ SELECT * FROM images WHERE id = 1;
 ## image_processor.py - Procesamiento de Imágenes
 
 ### Propósito
-Contiene toda la lógica de manipulación de imágenes usando **OpenCV (cv2)** como biblioteca principal. Este módulo implementa los conceptos fundamentales del curso de procesamiento digital de imágenes.
+Contiene la lógica de conversión de imágenes a string RGB y viceversa, usando **NumPy**. Solo tiene 2 funciones: `imagen_a_string_rgb` y `string_rgb_a_imagen`.
 
 ### Imports
 
 ```python
-import cv2
 import numpy as np
 ```
 
 | Import | Uso | Detalles |
 |--------|-----|----------|
-| `cv2` | OpenCV - Biblioteca principal de visión por computadora | Lectura de imágenes, conversiones de color |
-| `numpy` | Operaciones matemáticas con matrices | flatten, reshape, indexing, slicing |
+| `numpy` | Operaciones matemáticas con matrices | flatten, reshape, array |
 
-**Nota importante:** No se usa PIL/Pillow en este módulo. Todo el procesamiento es con OpenCV + NumPy.
-
-### Sección 1: Cargar Imagen con OpenCV
+### Sección 1: Descomposición - Imagen a String RGB
 
 ```python
-def cargar_imagen(path: str):
-    """
-    Carga una imagen desde cualquier formato.
-    Retorna la imagen en formato RGB (convertida desde BGR de OpenCV).
-    """
-    # Leer imagen con OpenCV (lee en BGR)
-    imagen = cv2.imread(path)
-
-    if imagen is None:
-        raise Exception(f"No se pudo cargar la imagen: {path}")
-
-    # Mostrar info como en clase
-    print(f"Shape: {imagen.shape}")  # (alto, ancho, canales)
-    print(f"Dtype: {imagen.dtype}")  # uint8
-    print(f"Size: {imagen.size}")    # alto * ancho * canales
-
-    # Convertir de BGR a RGB (OpenCV usa BGR por defecto)
-    imagen_rgb = cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB)
-
-    return imagen_rgb
-```
-
-**Explicación detallada:**
-
-#### 1. Lectura con OpenCV
-```python
-imagen = cv2.imread(path)
-```
-- OpenCV lee la imagen en formato **BGR** (Blue, Green, Red) en lugar de RGB
-- Esto es estándar en visión por computadora (herencia de cámaras de video antiguas)
-- Retorna un **array NumPy 3D** con shape `(alto, ancho, 3)`
-
-#### 2. Validación
-```python
-if imagen is None:
-    raise Exception(f"No se pudo cargar la imagen: {path}")
-```
-- `cv2.imread()` retorna `None` si el archivo no existe o no es válido
-- Es importante validar antes de usar la imagen
-
-#### 3. Información de la imagen (shape, dtype, size)
-
-```python
-print(f"Shape: {imagen.shape}")  # Ejemplo: (480, 640, 3)
-print(f"Dtype: {imagen.dtype}")  # uint8 (0-255)
-print(f"Size: {imagen.size}")    # 921600 (480 * 640 * 3)
-```
-
-**¿Qué es el shape?**
-```
-imagen.shape = (alto, ancho, canales)
-                 ↓      ↓        ↓
-Ejemplo:       (480,   640,     3)
-               filas  columnas  BGR
-```
-
-**Visualización del shape:**
-```
-       ←─── 640 píxeles (ancho) ───→
-    ┌──────────────────────────────┐  ↑
-    │ [B, G, R] [B, G, R] [B, G, R]│  │
-    │ [B, G, R] [B, G, R] [B, G, R]│  │ 480 píxeles
-    │     ...       ...       ...   │  │ (alto)
-    │ [B, G, R] [B, G, R] [B, G, R]│  │
-    └──────────────────────────────┘  ↓
-    
-    Cada píxel tiene 3 valores: [B, G, R]
-```
-
-**¿Qué es dtype uint8?**
-```python
-uint8 = Unsigned Integer de 8 bits
-      = Valores de 0 a 255 (2^8 = 256 valores)
-      = 1 byte por valor
-      
-Rango de colores: [0, 255]
-  0   = color apagado (negro para ese canal)
-  255 = color máximo (totalmente encendido)
-```
-
-**Memoria ocupada:**
-```python
-imagen.size = alto × ancho × canales
-            = 480 × 640 × 3
-            = 921,600 valores
-
-Bytes en memoria = 921,600 × 1 byte (uint8)
-                 = 921,600 bytes
-                 = 900 KB
-                 ≈ 0.88 MB
-```
-
-#### 4. Conversión BGR → RGB
-
-```python
-imagen_rgb = cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB)
-```
-
-**¿Por qué convertir?**
-- OpenCV lee imágenes en formato **BGR** (Blue, Green, Red)
-- La mayoría de bibliotecas y formatos esperan **RGB** (Red, Green, Blue)
-- Sin conversión, los colores se verían incorrectos:
-
-```
-Píxel original (archivo): R=255, G=0, B=0 (ROJO)
-
-OpenCV lee:   [B=0, G=0, R=255]  ← Lee como BGR
-Sin convertir: Se interpreta como RGB → [R=0, G=0, B=255] = AZUL ❌
-
-Con cv2.cvtColor():
-  [B=0, G=0, R=255] → [R=255, G=0, B=0] = ROJO ✅
-```
-
-**Cómo funciona `cv2.cvtColor()`:**
-```python
-cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB)
-             ↑        ↑
-        Imagen     Flag de conversión
-        de entrada  
-```
-
-La función intercambia los canales:
-```
-BGR: [canal_0, canal_1, canal_2]
-      Blue      Green    Red
-
-RGB: [canal_2, canal_1, canal_0]
-      Red       Green    Blue
-```
-
-**Ejemplo con píxel naranja:**
-```python
-# BGR (como lo lee OpenCV)
-pixel_bgr = [0, 165, 255]  # B=0, G=165, R=255
-
-# Después de cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB)
-pixel_rgb = [255, 165, 0]  # R=255, G=165, B=0 ✅
-```
-
-### Sección 2: Descomposición - Imagen a String RGB
-
-```python
-def imagen_a_string_rgb(imagen) -> tuple:
-    """
-    Descompone una imagen en sus valores RGB y los convierte a string.
-
-    Proceso:
-    1. Obtener dimensiones (alto, ancho, canales)
-    2. Aplanar matriz 3D a vector 1D
-    3. Convertir a string separado por comas
-    """
-    # Obtener dimensiones
+def imagen_a_string_rgb(imagen):
+    ### Descompone imagen en valores RGB y convierte a string
+    ### Proceso: obtener dimensiones -> aplanar 3D a 1D -> string con comas
     alto, ancho, canales = imagen.shape
-    print(f"Descomponiendo imagen de {ancho}x{alto} pixeles")
-    print(f"Total de valores RGB: {alto * ancho * canales}")
-
-    # Separar canales como en clase
-    r = imagen[:, :, 0]  # Canal Rojo
-    g = imagen[:, :, 1]  # Canal Verde
-    b = imagen[:, :, 2]  # Canal Azul
-
-    print(f"Canal R shape: {r.shape}")
-    print(f"Canal G shape: {g.shape}")
-    print(f"Canal B shape: {b.shape}")
-
-    # Aplanar la imagen completa a un vector 1D
     flat = imagen.flatten()
-    print(f"Vector aplanado: {len(flat)} valores")
-
-    # Convertir a string
     rgb_string = ",".join(map(str, flat))
-
     return rgb_string, ancho, alto
 ```
 
@@ -614,31 +441,15 @@ rgb_string = "255,0,0,0,255,0,0,0,255,255,255,0,255,0,255,0,255,255"
 # Este string se guardará en la base de datos
 ```
 
-### Sección 3: Reconstrucción - String RGB a Imagen
+### Sección 2: Reconstrucción - String RGB a Imagen
 
 ```python
-def string_rgb_a_imagen(rgb_string: str, ancho: int, alto: int):
-    """
-    Reconstruye una imagen desde un string de valores RGB.
-
-    Proceso:
-    1. Parsear string a lista de enteros
-    2. Convertir a array numpy uint8
-    3. Reshape a (alto, ancho, 3)
-    """
-    print(f"Reconstruyendo imagen de {ancho}x{alto}")
-
-    # Parsear string a lista de enteros
+def string_rgb_a_imagen(rgb_string, ancho, alto):
+    ### Reconstruye imagen desde string de valores RGB
+    ### Proceso: parsear string -> array numpy uint8 -> reshape (alto, ancho, 3)
     valores = list(map(int, rgb_string.split(",")))
-    print(f"Valores parseados: {len(valores)}")
-
-    # Crear array numpy con tipo uint8 (0-255)
     arr = np.array(valores, dtype=np.uint8)
-
-    # Reshape a dimensiones originales (alto, ancho, 3)
     imagen = arr.reshape((alto, ancho, 3))
-    print(f"Imagen reconstruida shape: {imagen.shape}")
-
     return imagen
 ```
 
@@ -750,21 +561,17 @@ reshape((3, 3, 3)) → 3 × 3 × 3 = 27 ❌
 # ValueError: cannot reshape array of size 18 into shape (3,3,3)
 ```
 
-### Sección 4: Funciones Auxiliares
-
-#### Obtener Canales Separados
+### Sección 3: Obtener Canales Separados
 
 ```python
 def obtener_canales(imagen):
-    """
-    Separa los canales RGB de una imagen.
-    Similar a canales_naturales.py del profesor.
-    """
+    ### Separa los canales RGB de una imagen
+    ### Similar a canales_naturales.py del profesor
     r = imagen[:, :, 0]
     g = imagen[:, :, 1]
     b = imagen[:, :, 2]
 
-    # Crear imágenes de cada canal
+    ### Crear imagenes de cada canal
     R = np.zeros_like(imagen)
     R[:, :, 0] = r
 
@@ -791,30 +598,20 @@ Imagen original:           Canal R:              Canal G:              Canal B:
    Color normal              Solo rojo            Solo verde            Solo azul
 ```
 
-**¿Para qué sirve?**
-- Visualizar la contribución de cada canal al color final
-- Análisis de imágenes (qué canal tiene más información)
-- Procesamiento selectivo por canal
-
-#### Calcular Tamaño en Memoria
+### Sección 4: Calcular Tamaño en Memoria
 
 ```python
 def calcular_tamano_imagen(imagen):
-    """
-    Calcula el tamaño de una imagen en memoria.
-    """
+    ### Calcula el tamano de una imagen en memoria
     alto, ancho, canales = imagen.shape
-    bytes_por_pixel = canales * 1  # uint8 = 1 byte
-    tamano_bytes = alto * ancho * bytes_por_pixel
+    tamano_bytes = alto * ancho * canales
     tamano_kb = tamano_bytes / 1024
     tamano_mb = tamano_kb / 1024
 
     print(f"Dimensiones: {ancho}x{alto}")
     print(f"Canales: {canales}")
     print(f"Total pixeles: {alto * ancho}")
-    print(f"Tamaño en memoria: {tamano_kb:.2f} KB ({tamano_mb:.4f} MB)")
-
-    return tamano_bytes
+    print(f"Tamano en memoria: {tamano_kb:.2f} KB ({tamano_mb:.4f} MB)")
 ```
 
 **Cálculo de memoria:**
@@ -823,20 +620,10 @@ def calcular_tamano_imagen(imagen):
 Imagen de 1920x1080 (Full HD):
 
 Píxeles = 1920 × 1080 = 2,073,600 píxeles
-
 Valores RGB = 2,073,600 × 3 canales = 6,220,800 valores
-
 Bytes = 6,220,800 × 1 byte (uint8) = 6,220,800 bytes
                                     = 6,075 KB
                                     ≈ 5.93 MB sin comprimir
-```
-
-**Comparación con archivo PNG:**
-```
-En memoria (sin comprimir): 5.93 MB
-Archivo PNG (con comprimir): ~500 KB - 2 MB
-
-Compresión PNG: 3x - 12x más pequeño
 ```
 
 ---

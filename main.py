@@ -1,124 +1,104 @@
 """
-Image Decomposer - Sistema de Descomposición y Reconstrucción de Imágenes
-Punto de entrada principal con selector de GUI
+Image Decomposer - Sistema de Descomposicion y Reconstruccion de Imagenes
+Punto de entrada principal
 """
 import tkinter as tk
 from tkinter import messagebox
-import sys
-
-
-class MainWindow:
-    def __init__(self):
-        """Inicializa la ventana principal."""
-        self.root = tk.Tk()
-        self.root.title("Image Decomposer")
-        self.root.geometry("400x300")
-        self.root.resizable(False, False)
-
-        # Centrar ventana
-        self._center_window()
-
-        self._setup_ui()
-
-    def _center_window(self):
-        """Centra la ventana en la pantalla."""
-        self.root.update_idletasks()
-        width = self.root.winfo_width()
-        height = self.root.winfo_height()
-        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
-        y = (self.root.winfo_screenheight() // 2) - (height // 2)
-        self.root.geometry(f"{width}x{height}+{x}+{y}")
-
-    def _setup_ui(self):
-        """Configura los componentes de la interfaz."""
-        # Frame principal
-        main_frame = tk.Frame(self.root, padx=40, pady=30)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Título
-        title_label = tk.Label(
-            main_frame,
-            text="Image Decomposer",
-            font=("Arial", 20, "bold")
-        )
-        title_label.pack(pady=(0, 10))
-
-        # Subtítulo
-        subtitle_label = tk.Label(
-            main_frame,
-            text="Sistema de Descomposición y\nReconstrucción de Imágenes RGB",
-            font=("Arial", 10),
-            fg="gray"
-        )
-        subtitle_label.pack(pady=(0, 30))
-
-        # Botón Cargar Imagen
-        btn_upload = tk.Button(
-            main_frame,
-            text="Cargar Imagen",
-            command=self._open_upload,
-            font=("Arial", 12),
-            width=20,
-            height=2,
-            bg="#4CAF50",
-            fg="white",
-            cursor="hand2"
-        )
-        btn_upload.pack(pady=10)
-
-        # Botón Ver Imagen
-        btn_viewer = tk.Button(
-            main_frame,
-            text="Ver Imagen",
-            command=self._open_viewer,
-            font=("Arial", 12),
-            width=20,
-            height=2,
-            bg="#2196F3",
-            fg="white",
-            cursor="hand2"
-        )
-        btn_viewer.pack(pady=10)
-
-        # Botón Salir
-        btn_exit = tk.Button(
-            main_frame,
-            text="Salir",
-            command=self.root.quit,
-            font=("Arial", 10),
-            width=10
-        )
-        btn_exit.pack(pady=(20, 0))
-
-    def _open_upload(self):
-        """Abre la ventana de carga de imágenes."""
-        try:
-            from gui_upload import UploadWindow
-            UploadWindow(self.root)
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al abrir ventana:\n{str(e)}")
-
-    def _open_viewer(self):
-        """Abre la ventana de visualización de imágenes."""
-        try:
-            from gui_viewer import ViewerWindow
-            ViewerWindow(self.root)
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al abrir ventana:\n{str(e)}")
-
-    def run(self):
-        """Inicia el loop principal de la aplicación."""
-        self.root.mainloop()
 
 
 def main():
-    """Función principal."""
-    try:
-        app = MainWindow()
-        app.run()
-    except Exception as e:
-        print(f"Error fatal: {e}")
-        sys.exit(1)
+    """Funcion principal - crea la ventana y arranca la aplicacion."""
+
+    root = tk.Tk()
+    root.title("Image Decomposer")
+    root.geometry("400x300")
+    root.resizable(False, False)
+
+    ### Centrar ventana
+    root.update_idletasks()
+    ancho = root.winfo_width()
+    alto = root.winfo_height()
+    x = (root.winfo_screenwidth() // 2) - (ancho // 2)
+    y = (root.winfo_screenheight() // 2) - (alto // 2)
+    root.geometry(f"{ancho}x{alto}+{x}+{y}")
+
+    ### --- Funciones ---
+
+    def abrir_captura():
+        """Abre la ventana de captura de imagenes."""
+        try:
+            from gui_upload import abrir_ventana_captura
+            abrir_ventana_captura(root)
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al abrir ventana:\n{str(e)}")
+
+    def abrir_visor():
+        """Abre la ventana de visualizacion de imagenes."""
+        try:
+            from gui_viewer import abrir_ventana_visor
+            abrir_ventana_visor(root)
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al abrir ventana:\n{str(e)}")
+
+    ### --- Construir UI ---
+
+    frame_principal = tk.Frame(root, padx=40, pady=30)
+    frame_principal.pack(fill=tk.BOTH, expand=True)
+
+    ### Titulo
+    tk.Label(
+        frame_principal,
+        text="Image Decomposer",
+        font=("Arial", 20, "bold")
+    ).pack(pady=(0, 10))
+
+    ### Subtitulo
+    tk.Label(
+        frame_principal,
+        text="Sistema de Descomposicion y\nReconstruccion de Imagenes RGB",
+        font=("Arial", 10),
+        fg="gray"
+    ).pack(pady=(0, 30))
+
+    ### Boton Cargar Imagen
+    tk.Button(
+        frame_principal,
+        text="Cargar Imagen",
+        command=abrir_captura,
+        font=("Arial", 12),
+        width=20,
+        height=2,
+        bg="#4CAF50",
+        fg="white",
+        cursor="hand2"
+    ).pack(pady=10)
+
+    ### Boton Ver Imagen
+    tk.Button(
+        frame_principal,
+        text="Ver Imagen",
+        command=abrir_visor,
+        font=("Arial", 12),
+        width=20,
+        height=2,
+        bg="#2196F3",
+        fg="white",
+        cursor="hand2"
+    ).pack(pady=10)
+
+    ### Boton Salir
+    tk.Button(
+        frame_principal,
+        text="Salir",
+        command=root.quit,
+        font=("Arial", 10),
+        width=10
+    ).pack(pady=(20, 0))
+
+    ### Presionar 'q' para salir
+    root.bind('<q>', lambda e: root.quit())
+
+    root.mainloop()
 
 
 if __name__ == "__main__":

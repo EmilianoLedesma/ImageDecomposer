@@ -1,6 +1,6 @@
 """
-GUI 1: Captura de cámara y descomposición de imágenes
-Usa OpenCV para captura de cámara y procesamiento, PIL solo para mostrar en Tkinter
+GUI 1: Captura de camara y descomposicion de imagenes
+Usa OpenCV para captura y procesamiento, PIL solo para mostrar en Tkinter
 """
 import tkinter as tk
 from tkinter import messagebox
@@ -10,329 +10,280 @@ from image_processor import imagen_a_string_rgb, calcular_tamano_imagen
 from database import save_image
 
 
-class UploadWindow:
-    def __init__(self, parent=None):
-        """Inicializa la ventana de captura de cámara."""
-        if parent:
-            self.window = tk.Toplevel(parent)
-        else:
-            self.window = tk.Tk()
+def abrir_ventana_captura(parent=None):
+    """Crea y muestra la ventana de captura de imagenes con camara."""
 
-        self.window.title("Capturar Imagen - Image Decomposer")
-        self.window.geometry("700x550")
-        self.window.resizable(True, True)
+    ### Crear ventana
+    if parent:
+        ventana = tk.Toplevel(parent)
+    else:
+        ventana = tk.Tk()
 
-        # Variables - imagen es array numpy (cv2)
-        self.imagen_actual = None
-        self.photo_image = None
+    ventana.title("Capturar Imagen - Image Decomposer")
+    ventana.geometry("700x550")
+    ventana.resizable(True, True)
 
-        # Variables de cámara
-        self.cap = None
-        self.camara_activa = False
+    ### Variables
+    captura = [None]        ### cv2.VideoCapture
+    camara_activa = [False] ### flag para el loop
+    imagen_actual = [None]  ### numpy array RGB de la foto capturada
+    foto_tk = [None]        ### referencia a ImageTk para que no se borre
 
-        # Cleanup al cerrar ventana
-        self.window.protocol("WM_DELETE_WINDOW", self._on_close)
+    ### --- Funciones ---
 
-        self._setup_ui()
-
-    def _setup_ui(self):
-        """Configura los componentes de la interfaz."""
-        # Frame superior
-        top_frame = tk.Frame(self.window, padx=20, pady=10)
-        top_frame.pack(fill=tk.X)
-
-        # Título
-        tk.Label(
-            top_frame,
-            text="Capturar y Descomponer Imagen",
-            font=("Arial", 16, "bold")
-        ).pack(pady=(0, 10))
-
-        # Frame de botones de cámara
-        btn_frame = tk.Frame(top_frame)
-        btn_frame.pack(pady=5)
-
-        # Botón abrir cámara
-        self.btn_camara = tk.Button(
-            btn_frame,
-            text="Abrir Cámara",
-            command=self._abrir_camara,
-            font=("Arial", 11),
-            width=15,
-            height=2
-        )
-        self.btn_camara.pack(side=tk.LEFT, padx=5)
-
-        # Botón tomar foto
-        self.btn_foto = tk.Button(
-            btn_frame,
-            text="Tomar Foto",
-            command=self._tomar_foto,
-            font=("Arial", 11),
-            width=15,
-            height=2,
-            state=tk.DISABLED
-        )
-        self.btn_foto.pack(side=tk.LEFT, padx=5)
-
-        # Label de estado
-        self.lbl_estado = tk.Label(
-            top_frame,
-            text="Cámara no iniciada",
-            font=("Arial", 9),
-            fg="gray"
-        )
-        self.lbl_estado.pack(pady=5)
-
-        # Frame inferior - botones de acción
-        bottom_frame = tk.Frame(self.window, padx=20, pady=10)
-        bottom_frame.pack(fill=tk.X, side=tk.BOTTOM)
-
-        # Label para ID generado
-        self.lbl_id = tk.Label(
-            bottom_frame,
-            text="",
-            font=("Arial", 12, "bold"),
-            fg="green"
-        )
-        self.lbl_id.pack(pady=5)
-
-        # Botón guardar en BD
-        self.btn_guardar = tk.Button(
-            bottom_frame,
-            text="Guardar en Base de Datos",
-            command=self._guardar_en_bd,
-            font=("Arial", 11),
-            width=25,
-            height=2,
-            state=tk.DISABLED
-        )
-        self.btn_guardar.pack(pady=5)
-
-        # Label para dimensiones
-        self.lbl_info = tk.Label(
-            bottom_frame,
-            text="",
-            font=("Arial", 10)
-        )
-        self.lbl_info.pack(pady=5)
-
-        # Frame central para preview
-        center_frame = tk.Frame(self.window, padx=20)
-        center_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Frame para preview
-        preview_frame = tk.LabelFrame(center_frame, text="Cámara / Vista Previa", padx=10, pady=10)
-        preview_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Canvas para mostrar imagen
-        self.canvas = tk.Canvas(preview_frame, width=640, height=480, bg="lightgray")
-        self.canvas.pack(fill=tk.BOTH, expand=True)
-
-    def _abrir_camara(self):
-        """Inicializa cv2.VideoCapture(0) y arranca el loop de feed."""
-        if self.camara_activa:
+    def abrir_camara():
+        """Inicializa la camara y arranca el feed en vivo."""
+        if camara_activa[0]:
             return
 
-        self.cap = cv2.VideoCapture(0)
+        captura[0] = cv2.VideoCapture(0)  ### 0 para la camara por defecto
 
-        if not self.cap.isOpened():
-            messagebox.showerror("Error", "No se pudo acceder a la cámara")
-            self.cap = None
+        if not captura[0].isOpened():
+            messagebox.showerror("Error", "No se pudo acceder a la camara")
+            captura[0] = None
             return
 
-        self.camara_activa = True
-        self.imagen_actual = None
+        camara_activa[0] = True
+        imagen_actual[0] = None
+        print("Camara abierta")
 
-        # Actualizar UI
-        self.btn_camara.config(state=tk.DISABLED)
-        self.btn_foto.config(state=tk.NORMAL)
-        self.btn_guardar.config(state=tk.DISABLED)
-        self.lbl_estado.config(text="Cámara activa - Feed en vivo", fg="green")
-        self.lbl_info.config(text="")
-        self.lbl_id.config(text="")
+        ### Actualizar botones y labels
+        btn_camara.config(state=tk.DISABLED)
+        btn_foto.config(state=tk.NORMAL)
+        btn_guardar.config(state=tk.DISABLED)
+        lbl_estado.config(text="Camara activa - Feed en vivo", fg="green")
+        lbl_info.config(text="")
+        lbl_id.config(text="")
 
-        # Iniciar loop de actualización
-        self._actualizar_feed()
+        ### Iniciar loop de feed
+        actualizar_feed()
 
-    def _actualizar_feed(self):
-        """Lee frame de la cámara, convierte BGR→RGB, muestra en canvas."""
-        if not self.camara_activa or self.cap is None or not self.cap.isOpened():
+    def actualizar_feed():
+        """Lee un frame de la camara y lo muestra en el canvas."""
+        if not camara_activa[0] or captura[0] is None or not captura[0].isOpened():
             return
 
-        ret, frame = self.cap.read()
+        ret, frame = captura[0].read()  ### lee un frame de la camara
         if ret:
-            # Convertir BGR → RGB
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  ### convierte BGR a RGB
 
-            # Obtener tamaño del canvas
-            self.window.update_idletasks()
-            canvas_width = self.canvas.winfo_width()
-            canvas_height = self.canvas.winfo_height()
+            ventana.update_idletasks()
+            ancho_canvas = canvas.winfo_width()
+            alto_canvas = canvas.winfo_height()
 
-            if canvas_width < 10:
-                canvas_width = 640
-                canvas_height = 480
+            if ancho_canvas < 10:
+                ancho_canvas = 640
+                alto_canvas = 480
 
-            # Obtener dimensiones del frame
             alto, ancho, _ = frame_rgb.shape
-
-            # Calcular ratio para mantener proporción
-            ratio = min(canvas_width / ancho, canvas_height / alto) * 0.95
-
+            ratio = min(ancho_canvas / ancho, alto_canvas / alto) * 0.95
             nuevo_ancho = int(ancho * ratio)
             nuevo_alto = int(alto * ratio)
 
-            # Redimensionar para preview
             preview = cv2.resize(frame_rgb, (nuevo_ancho, nuevo_alto))
 
-            # Convertir a formato Tkinter
-            pil_image = Image.fromarray(preview)
-            self.photo_image = ImageTk.PhotoImage(pil_image)
+            imagen_pil = Image.fromarray(preview)
+            foto_tk[0] = ImageTk.PhotoImage(imagen_pil)
 
-            # Mostrar en canvas
-            self.canvas.delete("all")
-            self.canvas.create_image(
-                canvas_width // 2,
-                canvas_height // 2,
-                image=self.photo_image,
+            canvas.delete("all")
+            canvas.create_image(
+                ancho_canvas // 2,
+                alto_canvas // 2,
+                image=foto_tk[0],
                 anchor=tk.CENTER
             )
 
-        # Programar siguiente actualización (~33 FPS)
-        self.window.after(30, self._actualizar_feed)
+        ventana.after(30, actualizar_feed)  ### ~33 FPS
 
-    def _tomar_foto(self):
-        """Captura el frame actual, detiene la cámara y muestra preview."""
-        if not self.camara_activa or self.cap is None or not self.cap.isOpened():
+    def tomar_foto():
+        """Captura el frame actual, detiene la camara y muestra la foto."""
+        if not camara_activa[0] or captura[0] is None or not captura[0].isOpened():
             return
 
-        ret, frame = self.cap.read()
+        ret, frame = captura[0].read()
         if not ret:
             messagebox.showerror("Error", "No se pudo capturar el frame")
             return
 
-        # Convertir BGR → RGB y guardar como imagen actual
-        self.imagen_actual = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        ### Guardar foto como numpy array RGB
+        imagen_actual[0] = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        # Detener la cámara
-        self._detener_camara()
+        ### Detener camara
+        detener_camara()
 
-        # Obtener dimensiones
-        alto, ancho, canales = self.imagen_actual.shape
-        calcular_tamano_imagen(self.imagen_actual)
+        ### Mostrar info
+        alto, ancho, canales = imagen_actual[0].shape
+        calcular_tamano_imagen(imagen_actual[0])
+        print(f"Foto capturada - Shape: {imagen_actual[0].shape}")
 
-        # Actualizar UI
-        self.lbl_estado.config(text="Foto capturada", fg="blue")
-        self.lbl_info.config(
-            text=f"Dimensiones: {ancho} x {alto} px | Canales: {canales}"
-        )
+        lbl_estado.config(text="Foto capturada", fg="blue")
+        lbl_info.config(text=f"Dimensiones: {ancho} x {alto} px | Canales: {canales}")
+        lbl_id.config(text="")
 
-        # Mostrar preview de la foto capturada
-        self._mostrar_preview()
+        ### Mostrar preview
+        mostrar_preview()
 
-        # Habilitar botón de guardar
-        self.btn_guardar.config(state=tk.NORMAL)
+        ### Habilitar boton guardar
+        btn_guardar.config(state=tk.NORMAL)
 
-        # Limpiar ID anterior
-        self.lbl_id.config(text="")
+    def detener_camara():
+        """Libera la camara y limpia variables."""
+        camara_activa[0] = False
+        if captura[0] is not None:
+            captura[0].release()
+            captura[0] = None
+            print("Camara liberada")
 
-    def _detener_camara(self):
-        """Libera la cámara y limpia variables."""
-        self.camara_activa = False
-        if self.cap is not None:
-            self.cap.release()
-            self.cap = None
+        btn_camara.config(state=tk.NORMAL)
+        btn_foto.config(state=tk.DISABLED)
 
-        # Actualizar botones
-        self.btn_camara.config(state=tk.NORMAL)
-        self.btn_foto.config(state=tk.DISABLED)
-
-    def _mostrar_preview(self):
-        """Muestra la imagen (numpy array) en el canvas de Tkinter."""
-        if self.imagen_actual is None:
+    def mostrar_preview():
+        """Muestra la imagen capturada en el canvas."""
+        if imagen_actual[0] is None:
             return
 
-        # Obtener tamaño del canvas
-        self.window.update()
-        canvas_width = self.canvas.winfo_width()
-        canvas_height = self.canvas.winfo_height()
+        ventana.update()
+        ancho_canvas = canvas.winfo_width()
+        alto_canvas = canvas.winfo_height()
 
-        if canvas_width < 10:
-            canvas_width = 640
-            canvas_height = 480
+        if ancho_canvas < 10:
+            ancho_canvas = 640
+            alto_canvas = 480
 
-        # Obtener dimensiones de la imagen
-        alto, ancho, _ = self.imagen_actual.shape
-
-        # Calcular ratio para mantener proporción
-        ratio = min(canvas_width / ancho, canvas_height / alto) * 0.9
-
+        alto, ancho, _ = imagen_actual[0].shape
+        ratio = min(ancho_canvas / ancho, alto_canvas / alto) * 0.9
         nuevo_ancho = int(ancho * ratio)
         nuevo_alto = int(alto * ratio)
 
-        # Redimensionar con cv2
-        preview = cv2.resize(self.imagen_actual, (nuevo_ancho, nuevo_alto))
+        preview = cv2.resize(imagen_actual[0], (nuevo_ancho, nuevo_alto))
 
-        # Convertir numpy array a PIL Image para Tkinter
-        pil_image = Image.fromarray(preview)
-        self.photo_image = ImageTk.PhotoImage(pil_image)
+        imagen_pil = Image.fromarray(preview)
+        foto_tk[0] = ImageTk.PhotoImage(imagen_pil)
 
-        # Mostrar en canvas
-        self.canvas.delete("all")
-        self.canvas.create_image(
-            canvas_width // 2,
-            canvas_height // 2,
-            image=self.photo_image,
+        canvas.delete("all")
+        canvas.create_image(
+            ancho_canvas // 2,
+            alto_canvas // 2,
+            image=foto_tk[0],
             anchor=tk.CENTER
         )
 
-    def _guardar_en_bd(self):
+    def guardar_en_bd():
         """Descompone la imagen en RGB y la guarda en Supabase."""
-        if self.imagen_actual is None:
+        if imagen_actual[0] is None:
             messagebox.showwarning("Advertencia", "No hay imagen para guardar")
             return
 
         try:
-            # Deshabilitar botón mientras procesa
-            self.btn_guardar.config(state=tk.DISABLED, text="Procesando...")
-            self.window.update()
+            btn_guardar.config(state=tk.DISABLED, text="Procesando...")
+            ventana.update()
 
-            # Convertir imagen a string RGB
-            rgb_string, ancho, alto = imagen_a_string_rgb(self.imagen_actual)
-
-            # Guardar en base de datos
+            rgb_string, ancho, alto = imagen_a_string_rgb(imagen_actual[0])
             image_id = save_image(ancho, alto, rgb_string)
 
-            # Mostrar ID generado
-            self.lbl_id.config(
-                text=f"Imagen guardada con ID: {image_id}",
-                fg="green"
-            )
-
+            lbl_id.config(text=f"Imagen guardada con ID: {image_id}", fg="green")
             messagebox.showinfo(
-                "Éxito",
+                "Exito",
                 f"Imagen guardada correctamente.\nID: {image_id}\n\nUsa este ID para recuperar la imagen."
             )
 
         except Exception as e:
             messagebox.showerror("Error", f"Error al guardar:\n{str(e)}")
-            self.lbl_id.config(text="Error al guardar", fg="red")
+            lbl_id.config(text="Error al guardar", fg="red")
 
         finally:
-            self.btn_guardar.config(state=tk.NORMAL, text="Guardar en Base de Datos")
+            btn_guardar.config(state=tk.NORMAL, text="Guardar en Base de Datos")
 
-    def _on_close(self):
-        """Cleanup al cerrar la ventana: libera la cámara."""
-        self._detener_camara()
-        self.window.destroy()
+    def cerrar_ventana(event=None):
+        """Libera la camara y cierra la ventana."""
+        detener_camara()
+        ventana.destroy()
 
-    def run(self):
-        """Inicia el loop principal de la ventana."""
-        self.window.mainloop()
+    ### --- Construir UI ---
+
+    ### Frame superior
+    frame_superior = tk.Frame(ventana, padx=20, pady=10)
+    frame_superior.pack(fill=tk.X)
+
+    tk.Label(
+        frame_superior,
+        text="Capturar y Descomponer Imagen",
+        font=("Arial", 16, "bold")
+    ).pack(pady=(0, 10))
+
+    ### Frame de botones de camara
+    frame_botones = tk.Frame(frame_superior)
+    frame_botones.pack(pady=5)
+
+    btn_camara = tk.Button(
+        frame_botones,
+        text="Abrir Camara",
+        command=abrir_camara,
+        font=("Arial", 11),
+        width=15,
+        height=2
+    )
+    btn_camara.pack(side=tk.LEFT, padx=5)
+
+    btn_foto = tk.Button(
+        frame_botones,
+        text="Tomar Foto",
+        command=tomar_foto,
+        font=("Arial", 11),
+        width=15,
+        height=2,
+        state=tk.DISABLED
+    )
+    btn_foto.pack(side=tk.LEFT, padx=5)
+
+    ### Label de estado
+    lbl_estado = tk.Label(
+        frame_superior,
+        text="Presiona 'Abrir Camara' para comenzar",
+        font=("Arial", 9),
+        fg="gray"
+    )
+    lbl_estado.pack(pady=5)
+
+    ### Frame inferior
+    frame_inferior = tk.Frame(ventana, padx=20, pady=10)
+    frame_inferior.pack(fill=tk.X, side=tk.BOTTOM)
+
+    lbl_id = tk.Label(frame_inferior, text="", font=("Arial", 12, "bold"), fg="green")
+    lbl_id.pack(pady=5)
+
+    btn_guardar = tk.Button(
+        frame_inferior,
+        text="Guardar en Base de Datos",
+        command=guardar_en_bd,
+        font=("Arial", 11),
+        width=25,
+        height=2,
+        state=tk.DISABLED
+    )
+    btn_guardar.pack(pady=5)
+
+    lbl_info = tk.Label(frame_inferior, text="", font=("Arial", 10))
+    lbl_info.pack(pady=5)
+
+    ### Frame central - preview
+    frame_central = tk.Frame(ventana, padx=20)
+    frame_central.pack(fill=tk.BOTH, expand=True)
+
+    frame_preview = tk.LabelFrame(frame_central, text="Camara / Vista Previa", padx=10, pady=10)
+    frame_preview.pack(fill=tk.BOTH, expand=True)
+
+    canvas = tk.Canvas(frame_preview, width=640, height=480, bg="lightgray")
+    canvas.pack(fill=tk.BOTH, expand=True)
+
+    ### Presionar 'q' para cerrar la ventana y liberar la camara
+    ventana.bind('<q>', cerrar_ventana)
+    ventana.protocol("WM_DELETE_WINDOW", cerrar_ventana)
+
+    return ventana
 
 
-# Para pruebas directas
+### Para pruebas directas
 if __name__ == "__main__":
-    app = UploadWindow()
-    app.run()
+    ventana = abrir_ventana_captura()
+    ventana.mainloop()
