@@ -1,13 +1,12 @@
-"""
-Image Decomposer - Sistema de Descomposicion y Reconstruccion de Imagenes
-Punto de entrada principal
-"""
+### Image Decomposer - Sistema de Descomposicion y Reconstruccion de Imagenes
+### Punto de entrada principal
 import tkinter as tk
-from tkinter import messagebox
+from gui_upload import abrir_ventana_captura
+from gui_viewer import abrir_ventana_visor
 
 
 def main():
-    """Funcion principal - crea la ventana y arranca la aplicacion."""
+    ### Funcion principal - crea la ventana y arranca la aplicacion
 
     root = tk.Tk()
     root.title("Image Decomposer")
@@ -21,24 +20,6 @@ def main():
     x = (root.winfo_screenwidth() // 2) - (ancho // 2)
     y = (root.winfo_screenheight() // 2) - (alto // 2)
     root.geometry(f"{ancho}x{alto}+{x}+{y}")
-
-    ### --- Funciones ---
-
-    def abrir_captura():
-        """Abre la ventana de captura de imagenes."""
-        try:
-            from gui_upload import abrir_ventana_captura
-            abrir_ventana_captura(root)
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al abrir ventana:\n{str(e)}")
-
-    def abrir_visor():
-        """Abre la ventana de visualizacion de imagenes."""
-        try:
-            from gui_viewer import abrir_ventana_visor
-            abrir_ventana_visor(root)
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al abrir ventana:\n{str(e)}")
 
     ### --- Construir UI ---
 
@@ -64,7 +45,7 @@ def main():
     tk.Button(
         frame_principal,
         text="Cargar Imagen",
-        command=abrir_captura,
+        command=lambda: abrir_ventana_captura(root),
         font=("Arial", 12),
         width=20,
         height=2,
@@ -77,7 +58,7 @@ def main():
     tk.Button(
         frame_principal,
         text="Ver Imagen",
-        command=abrir_visor,
+        command=lambda: abrir_ventana_visor(root),
         font=("Arial", 12),
         width=20,
         height=2,

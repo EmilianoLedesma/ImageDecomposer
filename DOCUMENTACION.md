@@ -66,9 +66,9 @@ Supabase → String → Array NumPy → Reshape → Imagen RGB → PIL → Tkint
 
 | Tecnología | Propósito | Dónde se Usa |
 |------------|-----------|--------------|
-| **OpenCV (cv2)** | Lectura y procesamiento principal de imágenes | `image_processor.py` - Todas las operaciones de imagen |
-| **NumPy** | Manipulación de matrices y arrays | `image_processor.py` - flatten, reshape, indexing |
-| **PIL/Pillow** | Conversión de NumPy a formato Tkinter **únicamente** | GUIs - Solo para método `ImageTk.PhotoImage()` |
+| **OpenCV (cv2)** | Captura de cámara, procesamiento y resize de imágenes | `image_processor.py`, `gui_upload.py` |
+| **NumPy** | Manipulación de matrices y arrays | `image_processor.py` - flatten, reshape, zeros_like |
+| **PIL/Pillow** | Conversión de NumPy a formato Tkinter **únicamente** | `image_processor.py` - Solo en `mostrar_en_canvas()` |
 | **Tkinter** | Interfaz gráfica de usuario | `main.py`, `gui_upload.py`, `gui_viewer.py` |
 | **Supabase** | Base de datos PostgreSQL en la nube | `database.py` |
 | **python-dotenv** | Manejo de variables de entorno | `config.py` |
@@ -141,7 +141,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 ### Sección 2: Validación
 
 ```python
-def validate_config():
+def validar_configuracion():
     ### Verifica que las credenciales de Supabase esten configuradas
     if not SUPABASE_URL:
         raise ValueError("SUPABASE_URL no esta configurado en el archivo .env")
@@ -165,7 +165,7 @@ Maneja toda la comunicación con la base de datos Supabase. Aísla la lógica de
 
 ```python
 from supabase import create_client
-from config import SUPABASE_URL, SUPABASE_KEY, validate_config
+from config import SUPABASE_URL, SUPABASE_KEY, validar_configuracion
 ```
 
 | Import | Uso |
@@ -178,11 +178,11 @@ from config import SUPABASE_URL, SUPABASE_KEY, validate_config
 ```python
 cliente = None
 
-def init_client():
+def iniciar_cliente():
     ### Inicializa y retorna el cliente de Supabase
     global cliente
     if cliente is None:
-        validate_config()
+        validar_configuracion()
         cliente = create_client(SUPABASE_URL, SUPABASE_KEY)
     return cliente
 ```
@@ -200,27 +200,27 @@ cliente1 = create_client(url, key)  # Nueva conexión
 cliente2 = create_client(url, key)  # Otra conexión
 
 # Con singleton: Reutiliza la misma conexión
-cliente1 = init_client()  # Crea conexión
-cliente2 = init_client()  # Retorna la misma conexión
+cliente1 = iniciar_cliente()  # Crea conexión
+cliente2 = iniciar_cliente()  # Retorna la misma conexión
 ```
 
 ### Sección 2: Guardar Imagen
 
 ```python
-def save_image(width, height, rgb_data):
+def guardar_imagen(ancho, alto, datos_rgb):
     ### Guarda los datos de una imagen en Supabase, retorna el ID
-    client = init_client()
+    cliente_local = iniciar_cliente()
 
-    data = {
-        "width": width,
-        "height": height,
-        "rgb_data": rgb_data
+    datos = {
+        "width": ancho,
+        "height": alto,
+        "rgb_data": datos_rgb
     }
 
-    response = client.table("images").insert(data).execute()
+    respuesta = cliente_local.table("images").insert(datos).execute()
 
-    if response.data:
-        return response.data[0]["id"]
+    if respuesta.data:
+        return respuesta.data[0]["id"]
     else:
         raise Exception("Error al guardar la imagen en la base de datos")
 ```
@@ -229,12 +229,12 @@ def save_image(width, height, rgb_data):
 
 | Línea | Qué hace |
 |-------|----------|
-| `client = init_client()` | Obtiene la conexión a Supabase |
-| `data = {...}` | Crea diccionario con los campos a insertar |
-| `client.table("images")` | Selecciona la tabla "images" |
-| `.insert(data)` | Prepara la operación INSERT |
+| `cliente_local = iniciar_cliente()` | Obtiene la conexión a Supabase |
+| `datos = {...}` | Crea diccionario con los campos a insertar |
+| `cliente_local.table("images")` | Selecciona la tabla "images" |
+| `.insert(datos)` | Prepara la operación INSERT |
 | `.execute()` | Ejecuta la query |
-| `response.data[0]["id"]` | Extrae el ID del registro creado |
+| `respuesta.data[0]["id"]` | Extrae el ID del registro creado |
 
 **Equivalente SQL:**
 ```sql
@@ -246,16 +246,16 @@ RETURNING id;
 ### Sección 3: Obtener Imagen
 
 ```python
-def get_image(image_id):
+def obtener_imagen(id_imagen):
     ### Recupera los datos de una imagen por su ID
-    client = init_client()
+    cliente_local = iniciar_cliente()
 
-    response = client.table("images").select("*").eq("id", image_id).execute()
+    respuesta = cliente_local.table("images").select("*").eq("id", id_imagen).execute()
 
-    if response.data:
-        return response.data[0]
+    if respuesta.data:
+        return respuesta.data[0]
     else:
-        raise Exception(f"No se encontro imagen con ID: {image_id}")
+        raise Exception(f"No se encontro imagen con ID: {id_imagen}")
 ```
 
 **Explicación:**
@@ -263,7 +263,7 @@ def get_image(image_id):
 | Método | Qué hace |
 |--------|----------|
 | `.select("*")` | Selecciona todas las columnas |
-| `.eq("id", image_id)` | Filtro WHERE id = image_id |
+| `.eq("id", id_imagen)` | Filtro WHERE id = id_imagen |
 | `.execute()` | Ejecuta la query |
 
 **Equivalente SQL:**
@@ -287,17 +287,23 @@ SELECT * FROM images WHERE id = 1;
 ## image_processor.py - Procesamiento de Imágenes
 
 ### Propósito
-Contiene la lógica de conversión de imágenes a string RGB y viceversa, usando **NumPy**. Solo tiene 2 funciones: `imagen_a_string_rgb` y `string_rgb_a_imagen`.
+Contiene las funciones de conversión de imágenes a string RGB y viceversa, separación de canales, cálculo de tamaño en memoria, y la función compartida `mostrar_en_canvas` para mostrar imágenes en el canvas de Tkinter.
 
 ### Imports
 
 ```python
 import numpy as np
+import cv2
+from PIL import Image, ImageTk
+import tkinter as tk
 ```
 
 | Import | Uso | Detalles |
 |--------|-----|----------|
-| `numpy` | Operaciones matemáticas con matrices | flatten, reshape, array |
+| `numpy` | Operaciones matemáticas con matrices | flatten, reshape, array, zeros_like |
+| `cv2` | Redimensionar imágenes para preview | `cv2.resize()` |
+| `PIL` | Conversión NumPy → ImageTk | `Image.fromarray()`, `ImageTk.PhotoImage()` |
+| `tkinter` | Constante `tk.CENTER` para posicionar en canvas | Solo para `mostrar_en_canvas` |
 
 ### Sección 1: Descomposición - Imagen a String RGB
 
@@ -306,9 +312,9 @@ def imagen_a_string_rgb(imagen):
     ### Descompone imagen en valores RGB y convierte a string
     ### Proceso: obtener dimensiones -> aplanar 3D a 1D -> string con comas
     alto, ancho, canales = imagen.shape
-    flat = imagen.flatten()
-    rgb_string = ",".join(map(str, flat))
-    return rgb_string, ancho, alto
+    aplanado = imagen.flatten()
+    cadena_rgb = ",".join(map(str, aplanado))
+    return cadena_rgb, ancho, alto
 ```
 
 **Explicación paso a paso:**
@@ -333,47 +339,10 @@ imagen.size = (ancho, alto)  # (640, 480)
 # ⚠️ Orden diferente! Por eso usamos OpenCV
 ```
 
-#### 2. Separar canales RGB con slicing
+#### 2. Aplanar (flatten) - De 3D a 1D
 
 ```python
-r = imagen[:, :, 0]  # Canal Rojo
-g = imagen[:, :, 1]  # Canal Verde
-b = imagen[:, :, 2]  # Canal Azul
-```
-
-**Sintaxis de indexing NumPy:**
-```python
-imagen[filas, columnas, canal]
-       [:, :, 0]
-        ↑   ↑  ↑
-        │   │  └─ Canal 0 (Rojo)
-        │   └──── Todas las columnas
-        └──────── Todas las filas
-```
-
-**Visualización de la separación:**
-```
-Imagen original RGB:          Canales separados:
-┌──────────────────┐         ┌────┐  ┌────┐  ┌────┐
-│ [255, 128, 0  ]  │   →     │255 │  │128 │  │ 0  │  
-│ [ 0,  255, 128]  │         │ 0  │  │255 │  │128 │
-│ [128,   0, 255]  │         │128 │  │ 0  │  │255 │
-└──────────────────┘         └────┘  └────┘  └────┘
-   Imagen 2D con RGB          R       G       B
-                           (2D)    (2D)    (2D)
-```
-
-**Cada canal es una matriz 2D:**
-```python
-r.shape = (480, 640)  # Solo valores rojos
-g.shape = (480, 640)  # Solo valores verdes
-b.shape = (480, 640)  # Solo valores azules
-```
-
-#### 3. Aplanar (flatten) - De 3D a 1D
-
-```python
-flat = imagen.flatten()
+aplanado = imagen.flatten()
 ```
 
 **¿Qué hace flatten()?**
@@ -390,7 +359,7 @@ imagen = [
 ]
 
 # Después de flatten(): shape (18,)
-flat = [255,0,0,  0,255,0,  0,0,255,  255,255,0,  255,0,255,  0,255,255]
+aplanado = [255,0,0,  0,255,0,  0,0,255,  255,255,0,  255,0,255,  0,255,255]
        └──┬──┘   └──┬──┘   └──┬──┘   └───┬──┘   └───┬───┘   └───┬──┘
        Píxel 0   Píxel 1   Píxel 2   Píxel 3    Píxel 4    Píxel 5
 ```
@@ -410,23 +379,23 @@ Resultado: [R0,G0,B0, R1,G1,B1, R2,G2,B2, R3,G3,B3, R4,G4,B4, R5,G5,B5]
 
 **Tamaño del vector aplanado:**
 ```python
-len(flat) = alto × ancho × canales
+len(aplanado) = alto × ancho × canales
           = 480 × 640 × 3
           = 921,600 valores
 ```
 
-#### 4. Convertir a string separado por comas
+#### 3. Convertir a string separado por comas
 
 ```python
-rgb_string = ",".join(map(str, flat))
+cadena_rgb = ",".join(map(str, aplanado))
 ```
 
 **Desglose de esta línea:**
 
 ```python
-# 1. map(str, flat): Convierte cada número a string
-flat = [255, 0, 0, 128, 255, 0]
-map(str, flat)  →  ["255", "0", "0", "128", "255", "0"]
+# 1. map(str, aplanado): Convierte cada número a string
+aplanado = [255, 0, 0, 128, 255, 0]
+map(str, aplanado)  →  ["255", "0", "0", "128", "255", "0"]
 
 # 2. ",".join(): Une con comas
 ",".join(["255", "0", "0", "128", "255", "0"])
@@ -435,19 +404,19 @@ map(str, flat)  →  ["255", "0", "0", "128", "255", "0"]
 
 **Resultado final:**
 ```python
-rgb_string = "255,0,0,0,255,0,0,0,255,255,255,0,255,0,255,0,255,255"
+cadena_rgb = "255,0,0,0,255,0,0,0,255,255,255,0,255,0,255,0,255,255"
              └──────────────────── 921,600 valores ──────────────────┘
-             
+
 # Este string se guardará en la base de datos
 ```
 
 ### Sección 2: Reconstrucción - String RGB a Imagen
 
 ```python
-def string_rgb_a_imagen(rgb_string, ancho, alto):
+def string_rgb_a_imagen(cadena_rgb, ancho, alto):
     ### Reconstruye imagen desde string de valores RGB
     ### Proceso: parsear string -> array numpy uint8 -> reshape (alto, ancho, 3)
-    valores = list(map(int, rgb_string.split(",")))
+    valores = list(map(int, cadena_rgb.split(",")))
     arr = np.array(valores, dtype=np.uint8)
     imagen = arr.reshape((alto, ancho, 3))
     return imagen
@@ -458,7 +427,7 @@ def string_rgb_a_imagen(rgb_string, ancho, alto):
 #### 1. Parsear string a lista de enteros
 
 ```python
-valores = list(map(int, rgb_string.split(",")))
+valores = list(map(int, cadena_rgb.split(",")))
 ```
 
 ```python
@@ -626,87 +595,144 @@ Bytes = 6,220,800 × 1 byte (uint8) = 6,220,800 bytes
                                     ≈ 5.93 MB sin comprimir
 ```
 
+### Sección 5: Mostrar Imagen en Canvas de Tkinter
+
+```python
+def mostrar_en_canvas(canvas, ventana, imagen_rgb, foto_tk_ref, margen=0.9):
+    ### Redimensiona imagen y la muestra centrada en un canvas de Tkinter
+    ### foto_tk_ref es una lista [None] para mantener la referencia al ImageTk
+    ventana.update()
+    ancho_canvas = canvas.winfo_width()
+    alto_canvas = canvas.winfo_height()
+    if ancho_canvas < 10:
+        ancho_canvas, alto_canvas = 640, 480
+
+    alto, ancho, _ = imagen_rgb.shape
+    ratio = min(ancho_canvas / ancho, alto_canvas / alto) * margen
+    vista_previa = cv2.resize(imagen_rgb, (int(ancho * ratio), int(alto * ratio)))
+
+    foto_tk_ref[0] = ImageTk.PhotoImage(Image.fromarray(vista_previa))
+    canvas.delete("all")
+    canvas.create_image(ancho_canvas // 2, alto_canvas // 2, image=foto_tk_ref[0], anchor=tk.CENTER)
+```
+
+**Explicación:**
+
+Esta función es **compartida** por `gui_upload.py` y `gui_viewer.py`. Antes, cada GUI tenía su propia versión duplicada. Ahora vive en `image_processor.py` como función reutilizable.
+
+| Paso | Código | Qué hace |
+|------|--------|----------|
+| 1 | `ventana.update()` | Fuerza a Tkinter a calcular las dimensiones reales del canvas |
+| 2 | `canvas.winfo_width()` | Obtiene el ancho actual del canvas en píxeles |
+| 3 | `min(ratio_ancho, ratio_alto) * margen` | Calcula la escala manteniendo proporción con 10% de margen |
+| 4 | `cv2.resize(imagen_rgb, ...)` | Redimensiona la imagen con OpenCV |
+| 5 | `Image.fromarray(vista_previa)` | Convierte NumPy array a PIL Image |
+| 6 | `ImageTk.PhotoImage(...)` | Convierte PIL Image a formato Tkinter |
+| 7 | `canvas.create_image(...)` | Muestra la imagen centrada en el canvas |
+
+**¿Por qué `foto_tk_ref` es una lista `[None]`?**
+
+```python
+### Si fuera una variable normal, Python la trataría como local
+foto_tk = None
+def mostrar():
+    foto_tk = ImageTk.PhotoImage(...)  ### Crea variable LOCAL, no modifica la exterior
+    ### Al salir de la función, foto_tk se borra → imagen desaparece del canvas
+
+### Con lista, modificamos el contenido sin crear variable nueva
+foto_tk = [None]
+def mostrar():
+    foto_tk[0] = ImageTk.PhotoImage(...)  ### Modifica el contenido de la lista
+    ### La referencia se mantiene viva → imagen se muestra correctamente
+```
+
 ---
 
 ## gui_upload.py - Interfaz de Captura
 
 ### Propósito
-Ventana gráfica para capturar imágenes desde la cámara web, mostrar feed en vivo, y guardarlas en la base de datos. Usa **OpenCV para captura de cámara y procesamiento** y PIL solo para la conversión final a ImageTk.
+Ventana gráfica para capturar imágenes desde la cámara web, mostrar feed en vivo, guardar la foto en la carpeta `img/`, y almacenar los datos RGB en Supabase. Usa **OpenCV para captura de cámara y procesamiento**. La conversión a ImageTk para Tkinter se delega a `mostrar_en_canvas()` en `image_processor.py`.
 
 ### Imports
 
 ```python
 import tkinter as tk
 from tkinter import messagebox
-from PIL import Image, ImageTk
 import cv2
-from image_processor import imagen_a_string_rgb, calcular_tamano_imagen
-from database import save_image
+import os
+from datetime import datetime
+from image_processor import imagen_a_string_rgb, calcular_tamano_imagen, mostrar_en_canvas
+from database import guardar_imagen
 ```
 
 | Import | Uso | Cuándo se usa |
 |--------|-----|---------------|
 | `tkinter` | Biblioteca GUI estándar de Python | Ventanas, botones, canvas |
 | `messagebox` | Ventanas de alerta/información | Errores, confirmaciones |
-| `cv2` | OpenCV - Captura de cámara y procesamiento | **Cámara y procesamiento** |
-| `ImageTk` | Convertir array NumPy a formato Tkinter | **Solo para mostrar en canvas** |
+| `cv2` | OpenCV - Captura de cámara y procesamiento | Cámara, conversión BGR/RGB, guardar foto |
+| `os` | Rutas de archivos | Construir ruta a carpeta `img/` |
+| `datetime` | Marca de tiempo | Nombre único para cada foto |
+| `mostrar_en_canvas` | Mostrar imagen en canvas de Tkinter | Feed en vivo y preview de foto |
+| `guardar_imagen` | Insertar datos en Supabase | Guardar imagen descompuesta |
 
-**Flujo de datos:**
-```
-Cámara → cv2.VideoCapture(0) → frame BGR → cvtColor → NumPy array RGB → PIL → ImageTk → Canvas
-         └──────────── Captura y Procesamiento ────────────┘   └─ Solo conversión ─┘
-```
+### Arquitectura: Función con Closures
 
-### Arquitectura de la Clase
+El módulo usa una **función principal** `abrir_ventana_captura()` que contiene funciones internas (closures). Las variables compartidas se manejan como **listas de un elemento** para poder modificarlas desde las funciones internas.
 
 ```python
-class UploadWindow:
-    def __init__(self, parent=None):
-        # Variables de instancia
-        self.imagen_actual = None      # Array NumPy de OpenCV (foto capturada)
-        self.photo_image = None        # ImageTk para Tkinter
+def abrir_ventana_captura(parent=None):
+    ### Crea y muestra la ventana de captura de imagenes con camara
 
-        # Variables de cámara
-        self.cap = None                # cv2.VideoCapture
-        self.camara_activa = False     # Flag para el loop de feed
+    ### Variables compartidas (listas para poder modificarlas en closures)
+    captura = [None]        ### cv2.VideoCapture
+    camara_activa = [False] ### flag para el loop
+    imagen_actual = [None]  ### numpy array RGB de la foto capturada
+    foto_tk = [None]        ### referencia a ImageTk para que no se borre
 ```
 
-**Tipos de datos:**
+**¿Por qué listas en vez de variables normales?**
+
 ```python
-self.imagen_actual: np.ndarray         # Array NumPy (alto, ancho, 3) uint8
-self.cap: cv2.VideoCapture             # Objeto de captura de cámara
-self.camara_activa: bool               # True cuando el feed está activo
-self.photo_image: ImageTk.PhotoImage   # Objeto para Tkinter
+### Con variable normal, Python crea una variable LOCAL dentro de la closure
+camara_activa = False
+def abrir_camara():
+    camara_activa = True  ### Crea variable LOCAL, no modifica la exterior
+
+### Con lista, modificamos el CONTENIDO sin crear variable nueva
+camara_activa = [False]
+def abrir_camara():
+    camara_activa[0] = True  ### Modifica el contenido de la lista exterior
 ```
 
 ### Sección 1: Abrir Cámara y Feed en Vivo
 
 ```python
-def _abrir_camara(self):
-    """Inicializa cv2.VideoCapture(0) y arranca el loop de feed."""
-    self.cap = cv2.VideoCapture(0)
-
-    if not self.cap.isOpened():
-        messagebox.showerror("Error", "No se pudo acceder a la cámara")
+def abrir_camara():
+    ### Inicializa la camara y arranca el feed en vivo
+    if camara_activa[0]:
         return
 
-    self.camara_activa = True
-    self._actualizar_feed()
+    captura[0] = cv2.VideoCapture(0)  ### 0 para la camara por defecto
 
-def _actualizar_feed(self):
-    """Lee frame, convierte BGR→RGB, muestra en canvas, se llama con after(30)."""
-    if not self.camara_activa or self.cap is None:
+    if not captura[0].isOpened():
+        messagebox.showerror("Error", "No se pudo acceder a la camara")
+        captura[0] = None
         return
 
-    ret, frame = self.cap.read()
+    camara_activa[0] = True
+    actualizar_feed()
+
+def actualizar_feed():
+    ### Lee un frame de la camara y lo muestra en el canvas
+    if not camara_activa[0] or captura[0] is None or not captura[0].isOpened():
+        return
+
+    ret, frame = captura[0].read()  ### lee un frame de la camara
     if ret:
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        # Redimensionar y mostrar en canvas...
-        pil_image = Image.fromarray(preview)
-        self.photo_image = ImageTk.PhotoImage(pil_image)
-        self.canvas.create_image(...)
+        imagen_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  ### convierte BGR a RGB
+        mostrar_en_canvas(canvas, ventana, imagen_rgb, foto_tk, 0.95)
 
-    self.window.after(30, self._actualizar_feed)  # ~33 FPS
+    ventana.after(30, actualizar_feed)  ### ~33 FPS
 ```
 
 **Explicación detallada:**
@@ -714,7 +740,7 @@ def _actualizar_feed(self):
 #### 1. Abrir la cámara con OpenCV
 
 ```python
-self.cap = cv2.VideoCapture(0)
+captura[0] = cv2.VideoCapture(0)
 ```
 
 - `cv2.VideoCapture(0)` abre la cámara por defecto del sistema (índice 0)
@@ -724,290 +750,118 @@ self.cap = cv2.VideoCapture(0)
 #### 2. Loop de actualización (Tkinter-friendly)
 
 ```python
-def _actualizar_feed(self):
-    if self.camara_activa and self.cap.isOpened():
-        ret, frame = self.cap.read()
-        if ret:
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            # mostrar en canvas...
-        self.window.after(30, self._actualizar_feed)
+def actualizar_feed():
+    if not camara_activa[0] or captura[0] is None or not captura[0].isOpened():
+        return
+
+    ret, frame = captura[0].read()
+    if ret:
+        imagen_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mostrar_en_canvas(canvas, ventana, imagen_rgb, foto_tk, 0.95)
+
+    ventana.after(30, actualizar_feed)
 ```
 
 - **No usa `while True`** (bloquearía la GUI de Tkinter)
-- Usa `self.window.after(30, ...)` para programar la siguiente actualización
+- Usa `ventana.after(30, ...)` para programar la siguiente actualización
 - Cada 30ms (~33 FPS) lee un nuevo frame de la cámara
 - Convierte BGR→RGB antes de mostrar
+- Usa `mostrar_en_canvas()` de `image_processor.py` para redimensionar y mostrar
 
-#### 3. Tomar foto y detener cámara
+#### 3. Tomar foto, guardar en img/ y detener cámara
 
 ```python
-def _tomar_foto(self):
-    ret, frame = self.cap.read()
-    self.imagen_actual = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    self._detener_camara()  # cap.release()
+def tomar_foto():
+    ### Captura el frame actual, detiene la camara y muestra la foto
+    ret, frame = captura[0].read()
+    imagen_actual[0] = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+    ### Detener camara
+    detener_camara()
+
+    ### Guardar foto en img/
+    carpeta_img = os.path.join(os.path.dirname(os.path.abspath(__file__)), "img")
+    marca_tiempo = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ruta_foto = os.path.join(carpeta_img, f"foto_{marca_tiempo}.png")
+    imagen_bgr = cv2.cvtColor(imagen_actual[0], cv2.COLOR_RGB2BGR)
+    cv2.imwrite(ruta_foto, imagen_bgr)
+
+    ### Mostrar info y preview
+    calcular_tamano_imagen(imagen_actual[0])
+    mostrar_en_canvas(canvas, ventana, imagen_actual[0], foto_tk)
 ```
 
 - Captura el frame actual como numpy array RGB
-- Detiene la cámara liberando el recurso
-- Muestra preview estática de la foto capturada
+- Detiene la cámara liberando el recurso con `cap.release()`
+- Guarda la foto en `img/foto_YYYYMMDD_HHMMSS.png` (convierte RGB→BGR para `cv2.imwrite`)
+- Muestra la ruta real del archivo en la interfaz
+- Muestra preview estática usando `mostrar_en_canvas()`
 
-### Sección 2: Mostrar Preview
-
-```python
-def _mostrar_preview(self):
-    """Muestra la imagen en el canvas usando OpenCV → PIL → ImageTk."""
-    if self.imagen_actual is None:
-        return
-
-    # Obtener tamaño del canvas
-    canvas_width = self.canvas.winfo_width()
-    canvas_height = self.canvas.winfo_height()
-
-    # Calcular tamaño manteniendo proporción
-    alto, ancho = self.imagen_actual.shape[:2]
-    ratio = min(canvas_width / ancho, canvas_height / alto)
-
-    nuevo_ancho = int(ancho * ratio * 0.9)
-    nuevo_alto = int(alto * ratio * 0.9)
-
-    # Redimensionar con OpenCV
-    imagen_preview = cv2.resize(
-        self.imagen_actual, 
-        (nuevo_ancho, nuevo_alto),
-        interpolation=cv2.INTER_LANCZOS4
-    )
-
-    # Convertir NumPy array a PIL Image para Tkinter
-    img_pil = Image.fromarray(imagen_preview)
-    self.photo_image = ImageTk.PhotoImage(img_pil)
-
-    # Mostrar en canvas
-    self.canvas.delete("all")
-    self.canvas.create_image(
-        canvas_width // 2,
-        canvas_height // 2,
-        image=self.photo_image,
-        anchor=tk.CENTER
-    )
-```
-
-**Explicación paso a paso:**
-
-#### 1. Calcular ratio para mantener proporción
+### Sección 2: Guardar en Base de Datos
 
 ```python
-ratio = min(canvas_width / ancho, canvas_height / alto)
-```
-
-**Ejemplo:**
-```
-Canvas: 400x300 píxeles
-Imagen: 1920x1080 píxeles
-
-ratio_ancho = 400 / 1920 = 0.208
-ratio_alto  = 300 / 1080 = 0.278
-
-ratio = min(0.208, 0.278) = 0.208
-
-Nueva imagen: 1920 × 0.208 = 399 píxeles ancho
-             1080 × 0.208 = 224 píxeles alto
-
-Resultado: 399x224 cabe perfectamente en 400x300 ✅
-```
-
-**Si no usáramos `min()`, la imagen se saldría:**
-```
-Con ratio_alto = 0.278:
-Nueva imagen: 1920 × 0.278 = 533 píxeles ancho ❌ (se sale de 400)
-             1080 × 0.278 = 300 píxeles alto
-```
-
-#### 2. Multiplicar por 0.9 para márgenes
-
-```python
-nuevo_ancho = int(ancho * ratio * 0.9)
-nuevo_alto = int(alto * ratio * 0.9)
-```
-
-El `* 0.9` deja un 10% de margen para que no quede pegada a los bordes.
-
-#### 3. Redimensionar con OpenCV
-
-```python
-imagen_preview = cv2.resize(
-    self.imagen_actual, 
-    (nuevo_ancho, nuevo_alto),
-    interpolation=cv2.INTER_LANCZOS4
-)
-```
-
-**Métodos de interpolación en OpenCV:**
-
-| Método | Calidad | Velocidad | Uso |
-|--------|---------|-----------|-----|
-| `INTER_NEAREST` | Baja | Muy rápida | Píxel art, imágenes pequeñas |
-| `INTER_LINEAR` | Media | Rápida | Uso general |
-| `INTER_CUBIC` | Alta | Media | Reducir tamaño |
-| `INTER_LANCZOS4` | Muy alta | Lenta | **Calidad máxima (lo que usamos)** |
-| `INTER_AREA` | Alta | Rápida | Reducir tamaño (alternativa) |
-
-**¿Qué hace la interpolación?**
-
-Cuando redimensionas una imagen, debes "inventar" o "promediar" píxeles:
-
-```
-Original (4x4):          Redimensionada (2x2):
-┌─┬─┬─┬─┐               ┌───┬───┐
-│1│2│3│4│               │ ? │ ? │
-├─┼─┼─┼─┤     →         ├───┼───┤
-│5│6│7│8│               │ ? │ ? │
-├─┼─┼─┼─┤               └───┴───┘
-│9│A│B│C│               
-├─┼─┼─┼─┤               ¿Qué valores poner?
-│D│E│F│G│
-└─┴─┴─┴─┘
-
-INTER_NEAREST: Toma el píxel más cercano
-  [1, 3]
-  [9, B]
-
-INTER_LANCZOS4: Promedio ponderado de 4x4 vecinos
-  [promedio(1,2,5,6), promedio(3,4,7,8)]
-  [promedio(9,A,D,E), promedio(B,C,F,G)]
-  → Bordes más suaves
-```
-
-#### 4. Convertir a PIL para Tkinter (única razón de usar PIL)
-
-```python
-img_pil = Image.fromarray(imagen_preview)
-self.photo_image = ImageTk.PhotoImage(img_pil)
-```
-
-**¿Por qué este paso?**
-
-```python
-# Tkinter NO puede mostrar arrays NumPy directamente
-canvas.create_image(x, y, image=imagen_preview)  # ❌ TypeError
-
-# Tkinter SÍ puede mostrar ImageTk.PhotoImage
-img_pil = Image.fromarray(imagen_preview)  # NumPy → PIL
-photo = ImageTk.PhotoImage(img_pil)         # PIL → ImageTk
-canvas.create_image(x, y, image=photo)      # ✅ Funciona
-```
-
-**Es una limitación de Tkinter, no una elección de diseño.**
-
-**Alternativas que NO funcionan:**
-```python
-# Intentar usar NumPy directamente
-canvas.create_image(x, y, image=imagen_preview)  # ❌
-
-# Intentar usar OpenCV directamente
-cv2.imshow("Ventana", imagen_preview)  # ✅ Funciona pero...
-# → Abre ventana SEPARADA de OpenCV, no integra con Tkinter
-```
-
-#### 5. Mostrar en canvas
-
-```python
-self.canvas.delete("all")  # Borrar contenido anterior
-self.canvas.create_image(
-    canvas_width // 2,      # x: Centro horizontal
-    canvas_height // 2,     # y: Centro vertical
-    image=self.photo_image,
-    anchor=tk.CENTER        # Anclar desde el centro
-)
-```
-
-**Anchors en Tkinter:**
-```
-anchor=tk.NW (noroeste)    anchor=tk.N     anchor=tk.NE
-        ┌────────┐              ┌────────┐      ┌────────┐
-        │█       │              │   █    │      │       █│
-        
-anchor=tk.W                anchor=tk.CENTER    anchor=tk.E
-        ┌────────┐              ┌────────┐      ┌────────┐
-        │█       │              │   █    │      │       █│
-        
-anchor=tk.SW               anchor=tk.S         anchor=tk.SE
-        ┌────────┐              ┌────────┐      ┌────────┐
-        │       █│              │   █    │      │       █│
-
-█ = Punto de referencia
-```
-
-### Sección 3: Guardar en Base de Datos
-
-```python
-def _guardar_en_bd(self):
-    """Descompone la imagen con OpenCV y guarda en Supabase."""
-    if self.imagen_actual is None:
+def guardar_en_bd():
+    ### Descompone la imagen en RGB y la guarda en Supabase
+    if imagen_actual[0] is None:
+        messagebox.showwarning("Advertencia", "No hay imagen para guardar")
         return
 
     try:
-        # Deshabilitar botón mientras procesa
-        self.btn_save.config(state=tk.DISABLED, text="Procesando...")
-        self.window.update()  # Forzar actualización de UI
+        btn_guardar.config(state=tk.DISABLED, text="Procesando...")
+        ventana.update()
 
-        # Descomponer imagen (OpenCV/NumPy)
-        rgb_string, ancho, alto = imagen_a_string_rgb(self.imagen_actual)
+        cadena_rgb, ancho, alto = imagen_a_string_rgb(imagen_actual[0])
+        id_imagen = guardar_imagen(ancho, alto, cadena_rgb)
 
-        # Guardar en base de datos
-        image_id = save_image(ancho, alto, rgb_string)
-
-        # Mostrar ID generado
-        self.lbl_id.config(text=f"Imagen guardada con ID: {image_id}")
-
-        messagebox.showinfo("Éxito", f"Imagen guardada con ID: {image_id}")
+        lbl_id.config(text=f"Imagen guardada con ID: {id_imagen}", fg="green")
+        messagebox.showinfo("Exito", f"Imagen guardada correctamente.\nID: {id_imagen}")
 
     except Exception as e:
         messagebox.showerror("Error", f"Error al guardar:\n{str(e)}")
 
     finally:
-        self.btn_save.config(state=tk.NORMAL, text="Guardar en Base de Datos")
+        btn_guardar.config(state=tk.NORMAL, text="Guardar en Base de Datos")
 ```
 
 **Flujo completo:**
 
 ```
-self.imagen_actual (NumPy array RGB)
+imagen_actual[0] (NumPy array RGB)
         │
         ▼
-imagen_a_string_rgb()  [OpenCV/NumPy]
+imagen_a_string_rgb()  [NumPy]
         │
         ├─→ imagen.flatten()
-        ├─→ ",".join(map(str, flat))
+        ├─→ ",".join(map(str, aplanado))
         │
         ▼
-(rgb_string, ancho, alto)
+(cadena_rgb, ancho, alto)
         │
         ▼
-save_image(ancho, alto, rgb_string)  [Supabase]
+guardar_imagen(ancho, alto, cadena_rgb)  [Supabase]
         │
         ▼
 ID generado
 ```
 
-**¿Por qué `self.window.update()`?**
+**¿Por qué `ventana.update()`?**
 
 ```python
-self.btn_save.config(text="Procesando...")
-self.window.update()  # Sin esto, el texto no cambia hasta que termine
+btn_guardar.config(text="Procesando...")
+ventana.update()  ### Sin esto, el texto no cambia hasta que termine
 ```
 
 Tkinter es de un solo hilo. Si no llamas a `.update()`, los cambios visuales se quedan "pendientes" hasta que termine la función:
 
 ```python
-# Sin update()
-self.btn_save.config(text="Procesando...")  # Se queda pendiente
-time.sleep(5)  # Usuario ve el botón sin cambiar
-# Al terminar, cambia por un instante y vuelve a "Guardar..."
+### Sin update()
+btn_guardar.config(text="Procesando...")  ### Se queda pendiente
+time.sleep(5)  ### Usuario ve el botón sin cambiar
 
-# Con update()
-self.btn_save.config(text="Procesando...")
-self.window.update()  # ✅ Cambia inmediatamente
-time.sleep(5)  # Usuario VE "Procesando..."
+### Con update()
+btn_guardar.config(text="Procesando...")
+ventana.update()  ### Cambia inmediatamente
+time.sleep(5)  ### Usuario VE "Procesando..."
 ```
 
 ---
@@ -1015,45 +869,71 @@ time.sleep(5)  # Usuario VE "Procesando..."
 ## gui_viewer.py - Interfaz de Visualización
 
 ### Propósito
-Ventana para consultar imágenes por ID, reconstruirlas desde la base de datos usando **OpenCV/NumPy**, y mostrarlas. PIL solo se usa para la conversión a ImageTk.
+Ventana para consultar imágenes por ID, reconstruirlas desde la base de datos usando **NumPy**, y mostrarlas. Usa la función compartida `mostrar_en_canvas()` de `image_processor.py` para la visualización.
+
+### Imports
+
+```python
+import tkinter as tk
+from tkinter import messagebox
+from image_processor import string_rgb_a_imagen, mostrar_en_canvas
+from database import obtener_imagen
+```
+
+| Import | Uso |
+|--------|-----|
+| `tkinter` | Ventana, canvas, labels, botones |
+| `messagebox` | Alertas de error/advertencia |
+| `string_rgb_a_imagen` | Reconstruir imagen desde string RGB |
+| `mostrar_en_canvas` | Redimensionar y mostrar en canvas |
+| `obtener_imagen` | Consultar imagen por ID en Supabase |
+
+**Nota:** Este módulo **no importa** `cv2` ni `PIL` directamente. Todo el procesamiento de imagen y la conversión a ImageTk se delegan a `image_processor.py`.
+
+### Arquitectura: Función con Closures
+
+Igual que `gui_upload.py`, usa una función principal con closures:
+
+```python
+def abrir_ventana_visor(parent=None):
+    ### Crea y muestra la ventana de consulta y reconstruccion de imagenes
+
+    ### Variables
+    imagen_actual = [None]
+    foto_tk = [None]
+```
 
 ### Sección Principal: Consultar y Reconstruir Imagen
 
 ```python
-def _consultar_imagen(self):
-    """Consulta la imagen por ID, la reconstruye con OpenCV y la muestra."""
-    id_text = self.entry_id.get().strip()
+def consultar_imagen():
+    ### Consulta la imagen por ID y la reconstruye
+    id_texto = entrada_id.get().strip()
 
-    if not id_text:
+    if not id_texto:
         messagebox.showwarning("Advertencia", "Ingresa un ID de imagen")
         return
 
     try:
-        image_id = int(id_text)
+        id_imagen = int(id_texto)
     except ValueError:
-        messagebox.showerror("Error", "El ID debe ser un número entero")
+        messagebox.showerror("Error", "El ID debe ser un numero entero")
         return
 
     try:
-        # Consultar base de datos
-        image_data = get_image(image_id)
+        ### Consultar base de datos
+        datos = obtener_imagen(id_imagen)
 
-        # Extraer datos
-        ancho = image_data["width"]
-        alto = image_data["height"]
-        rgb_string = image_data["rgb_data"]
+        ### Extraer datos
+        ancho = datos["width"]
+        alto = datos["height"]
+        cadena_rgb = datos["rgb_data"]
 
-        # Reconstruir imagen con OpenCV/NumPy
-        self.imagen_actual = string_rgb_a_imagen(rgb_string, ancho, alto)
+        ### Reconstruir imagen (retorna numpy array RGB)
+        imagen_actual[0] = string_rgb_a_imagen(cadena_rgb, ancho, alto)
 
-        # Mostrar información
-        self.lbl_info.config(
-            text=f"Dimensiones: {ancho}x{alto} | "
-                 f"Valores RGB: {len(rgb_string.split(','))}"
-        )
-
-        # Mostrar imagen
-        self._mostrar_imagen()
+        ### Mostrar imagen reconstruida
+        mostrar_en_canvas(canvas, ventana, imagen_actual[0], foto_tk)
 
     except Exception as e:
         messagebox.showerror("Error", f"Error al consultar:\n{str(e)}")
@@ -1067,7 +947,7 @@ ID ingresado por usuario (texto)
         ├─→ Validar que sea entero
         │
         ▼
-get_image(id)  [Consulta Supabase]
+obtener_imagen(id)  [Consulta Supabase]
         │
         ▼
 {
@@ -1079,18 +959,21 @@ get_image(id)  [Consulta Supabase]
 }
         │
         ▼
-string_rgb_a_imagen(rgb_data, width, height)  [OpenCV/NumPy]
+string_rgb_a_imagen(cadena_rgb, ancho, alto)  [NumPy]
         │
-        ├─→ rgb_string.split(",")          # String → Lista
-        ├─→ np.array(valores, dtype=uint8) # Lista → Array NumPy
-        ├─→ arr.reshape((alto, ancho, 3))  # 1D → 3D
+        ├─→ cadena_rgb.split(",")            ### String → Lista
+        ├─→ np.array(valores, dtype=uint8)   ### Lista → Array NumPy
+        ├─→ arr.reshape((alto, ancho, 3))    ### 1D → 3D
         │
         ▼
 Array NumPy RGB (alto, ancho, 3) uint8
         │
-        ├─→ cv2.resize() si es necesario
-        ├─→ Image.fromarray()  # NumPy → PIL
-        ├─→ ImageTk.PhotoImage()  # PIL → ImageTk
+        ▼
+mostrar_en_canvas()  [image_processor.py]
+        │
+        ├─→ cv2.resize()              ### Redimensionar
+        ├─→ Image.fromarray()          ### NumPy → PIL
+        ├─→ ImageTk.PhotoImage()       ### PIL → ImageTk
         │
         ▼
 Mostrar en Tkinter Canvas
@@ -1101,16 +984,16 @@ Mostrar en Tkinter Canvas
 #### 1. Validación del ID
 
 ```python
-id_text = self.entry_id.get().strip()
+id_texto = entrada_id.get().strip()
 
-if not id_text:
+if not id_texto:
     messagebox.showwarning("Advertencia", "Ingresa un ID de imagen")
     return
 
 try:
-    image_id = int(id_text)
+    id_imagen = int(id_texto)
 except ValueError:
-    messagebox.showerror("Error", "El ID debe ser un número entero")
+    messagebox.showerror("Error", "El ID debe ser un numero entero")
     return
 ```
 
@@ -1118,23 +1001,23 @@ except ValueError:
 
 | Input | Resultado |
 |-------|-----------|
-| `"  123  "` | `image_id = 123` ✅ (strip elimina espacios) |
-| `"abc"` | ValueError → Mensaje de error ❌ |
-| `""` | Warning "Ingresa un ID" ❌ |
-| `"12.5"` | ValueError (no es entero) ❌ |
-| `"0"` | `image_id = 0` ✅ (válido aunque probablemente no exista) |
+| `"  123  "` | `id_imagen = 123` (strip elimina espacios) |
+| `"abc"` | ValueError → Mensaje de error |
+| `""` | Warning "Ingresa un ID" |
+| `"12.5"` | ValueError (no es entero) |
+| `"0"` | `id_imagen = 0` (válido aunque probablemente no exista) |
 
 #### 2. Consultar base de datos
 
 ```python
-image_data = get_image(image_id)
+datos = obtener_imagen(id_imagen)
 ```
 
 **Internamente ejecuta:**
 ```python
-response = client.table("images")\
+respuesta = cliente_local.table("images")\
     .select("*")\
-    .eq("id", image_id)\
+    .eq("id", id_imagen)\
     .execute()
 ```
 
@@ -1144,173 +1027,36 @@ response = client.table("images")\
     "id": 1,
     "width": 640,
     "height": 480,
-    "rgb_data": "255,0,0,0,255,0,0,0,255,...",  # String MUY largo
+    "rgb_data": "255,0,0,0,255,0,0,0,255,...",  ### String MUY largo
     "created_at": "2024-01-15T10:30:00.000Z"
 }
 ```
 
-**Tamaño del string:**
-```python
-# Imagen 640x480
-valores = 640 × 480 × 3 = 921,600 valores
-string = "255,0,0,..." con comas = ~3.5 MB de texto
-
-# PostgreSQL puede almacenar hasta 1 GB por campo TEXT
-# → No hay problema de capacidad
-```
-
-#### 3. Reconstruir imagen
+#### 3. Reconstruir y mostrar imagen
 
 ```python
-self.imagen_actual = string_rgb_a_imagen(rgb_string, ancho, alto)
+### Reconstruir imagen desde string
+imagen_actual[0] = string_rgb_a_imagen(cadena_rgb, ancho, alto)
+
+### Mostrar en canvas (redimensiona, convierte a ImageTk, centra)
+mostrar_en_canvas(canvas, ventana, imagen_actual[0], foto_tk)
 ```
 
-**Internamente:**
-
-```python
-def string_rgb_a_imagen(rgb_string: str, ancho: int, alto: int):
-    # 1. Parsear string
-    valores = list(map(int, rgb_string.split(",")))
-    # "255,0,0" → [255, 0, 0]
-    
-    # 2. Crear array NumPy
-    arr = np.array(valores, dtype=np.uint8)
-    # [255, 0, 0, ...] shape: (921600,)
-    
-    # 3. Reshape a imagen 3D
-    imagen = arr.reshape((alto, ancho, 3))
-    # shape: (480, 640, 3)
-    
-    return imagen  # Array NumPy RGB
-```
-
-**Proceso visual:**
-
-```
-String en BD:
-"255,0,0,0,255,0,0,0,255,255,255,0,0,255,255,255,0,255"
-
-    ↓ split(",")
-
-Lista de strings:
-["255", "0", "0", "0", "255", "0", ...]
-
-    ↓ map(int, ...)
-
-Lista de enteros:
-[255, 0, 0, 0, 255, 0, ...]
-
-    ↓ np.array(..., dtype=np.uint8)
-
-Array 1D:
-[255 0 0 0 255 0 ...] shape: (18,)
-
-    ↓ reshape((2, 3, 3))
-
-Array 3D (imagen):
-[
-  [[255,0,0], [0,255,0], [0,0,255]],     # Fila 0
-  [[255,255,0], [0,255,255], [255,0,255]] # Fila 1
-]
-shape: (2, 3, 3)
-```
-
-#### 4. Mostrar información
-
-```python
-self.lbl_info.config(
-    text=f"Dimensiones: {ancho}x{alto} | "
-         f"Valores RGB: {len(rgb_string.split(','))}"
-)
-```
-
-**Ejemplo de salida:**
-```
-Dimensiones: 640x480 | Valores RGB: 921,600
-```
-
-### Mostrar Imagen Reconstruida
-
-```python
-def _mostrar_imagen(self):
-    """Muestra la imagen reconstruida en el canvas."""
-    if self.imagen_actual is None:
-        return
-
-    # Obtener tamaño del canvas
-    canvas_width = self.canvas.winfo_width()
-    canvas_height = self.canvas.winfo_height()
-
-    # Calcular redimensionamiento
-    alto, ancho = self.imagen_actual.shape[:2]
-    ratio = min(canvas_width / ancho, canvas_height / alto)
-
-    nuevo_ancho = int(ancho * ratio * 0.9)
-    nuevo_alto = int(alto * ratio * 0.9)
-
-    # Redimensionar con OpenCV
-    imagen_preview = cv2.resize(
-        self.imagen_actual,
-        (nuevo_ancho, nuevo_alto),
-        interpolation=cv2.INTER_LANCZOS4
-    )
-
-    # Convertir NumPy → PIL → ImageTk (solo para Tkinter)
-    img_pil = Image.fromarray(imagen_preview)
-    self.photo_image = ImageTk.PhotoImage(img_pil)
-
-    # Mostrar en canvas
-    self.canvas.delete("all")
-    self.canvas.create_image(
-        canvas_width // 2,
-        canvas_height // 2,
-        image=self.photo_image,
-        anchor=tk.CENTER
-    )
-```
-
-**Comparación: Imagen Original vs Reconstruida**
-
-```
-Imagen Original (archivo JPG/PNG):
-  - Puede tener compresión con pérdida (JPG)
-  - Puede tener metadatos EXIF
-  - Tamaño: ~100 KB - 2 MB
-
-        ↓ Cargar con cv2.imread()
-        ↓ Convertir BGR → RGB
-        ↓ Descomponer a string RGB
-        ↓ Guardar en BD
-
-String en BD:
-  - Sin compresión
-  - Sin metadatos
-  - Valores RGB puros
-  - Tamaño: ~3.5 MB (texto)
-
-        ↓ Consultar de BD
-        ↓ Reconstruir con NumPy
-        ↓ Reshape a imagen
-
-Imagen Reconstruida (NumPy array):
-  - Idéntica píxel por píxel a la cargada
-  - Sin pérdida de calidad
-  - Lista para procesar o guardar
-```
+La reconstrucción (`string_rgb_a_imagen`) y la visualización (`mostrar_en_canvas`) están en `image_processor.py`, manteniendo la separación de responsabilidades.
 
 **¿Se pierde calidad?**
 
 ```python
-# NO, si guardas y reconstruyes en el mismo formato
+### NO, si guardas y reconstruyes en el mismo formato
 
-Imagen original → cv2.imread() → Array NumPy → flatten() → String
-                                      ↓
-                                 [255, 0, 0, ...]
-                                      ↑
+Cámara → cap.read() → Array NumPy → flatten() → String
+                                        ↓
+                                   [255, 0, 0, ...]
+                                        ↑
 String → split() → Array NumPy → reshape() → Imagen reconstruida
 
 Comparación:
-np.array_equal(imagen_original, imagen_reconstruida)  # True ✅
+np.array_equal(imagen_original, imagen_reconstruida)  ### True
 ```
 
 ---
@@ -1318,34 +1064,49 @@ np.array_equal(imagen_original, imagen_reconstruida)  # True ✅
 ## main.py - Punto de Entrada
 
 ### Propósito
-Ventana principal que permite abrir las otras dos interfaces.
+Ventana principal que permite abrir las otras dos interfaces (captura y visor).
+
+### Imports
+
+```python
+import tkinter as tk
+from gui_upload import abrir_ventana_captura
+from gui_viewer import abrir_ventana_visor
+```
+
+Los imports son a **nivel de módulo** (no lazy imports dentro de funciones), ya que las dependencias son directas.
 
 ### Estructura
 
 ```python
-class MainWindow:
-    def __init__(self):
-        self.root = tk.Tk()
-        self.root.title("Image Decomposer")
-        self._setup_ui()
-
-    def _open_upload(self):
-        """Abre la ventana de carga de imágenes."""
-        from gui_upload import UploadWindow
-        UploadWindow(self.root)
-
-    def _open_viewer(self):
-        """Abre la ventana de visualización de imágenes."""
-        from gui_viewer import ViewerWindow
-        ViewerWindow(self.root)
-
-    def run(self):
-        self.root.mainloop()
-
-
 def main():
-    app = MainWindow()
-    app.run()
+    ### Funcion principal - crea la ventana y arranca la aplicacion
+
+    root = tk.Tk()
+    root.title("Image Decomposer")
+    root.geometry("400x300")
+    root.resizable(False, False)
+
+    ### Centrar ventana
+    root.update_idletasks()
+    ancho = root.winfo_width()
+    alto = root.winfo_height()
+    x = (root.winfo_screenwidth() // 2) - (ancho // 2)
+    y = (root.winfo_screenheight() // 2) - (alto // 2)
+    root.geometry(f"{ancho}x{alto}+{x}+{y}")
+
+    ### Botones
+    tk.Button(
+        text="Cargar Imagen",
+        command=lambda: abrir_ventana_captura(root),
+    ).pack()
+
+    tk.Button(
+        text="Ver Imagen",
+        command=lambda: abrir_ventana_visor(root),
+    ).pack()
+
+    root.mainloop()
 
 
 if __name__ == "__main__":
@@ -1364,11 +1125,11 @@ if __name__ == "__main__":
 - Si importas el archivo desde otro módulo, `__name__` será el nombre del módulo
 
 ```python
-# Si ejecutas: python main.py
-__name__ == "__main__"  # True, ejecuta main()
+### Si ejecutas: python main.py
+__name__ == "__main__"  ### True, ejecuta main()
 
-# Si importas: from main import MainWindow
-__name__ == "main"  # False, no ejecuta main()
+### Si importas: from main import main
+__name__ == "main"  ### False, no ejecuta main()
 ```
 
 ---
@@ -1746,39 +1507,39 @@ gris = cv2.cvtColor(imagen_rgb, cv2.COLOR_RGB2GRAY)
 
 ## Resumen de Flujos Completos
 
-### Flujo de Captura (con OpenCV)
+### Flujo de Captura
 
 ```
 1. Usuario: main.py → Click "Cargar Imagen"
-2. GUI: gui_upload.py → Abre ventana
+2. GUI: gui_upload.py → abrir_ventana_captura()
 3. Usuario: Click "Abrir Cámara"
-4. GUI: cv2.VideoCapture(0) → Feed en vivo en canvas (loop con after(30))
+4. GUI: cv2.VideoCapture(0) → Feed en vivo con mostrar_en_canvas() (loop con after(30))
 5. Usuario: Click "Tomar Foto"
 6. GUI: cap.read() → frame BGR → cv2.cvtColor(BGR → RGB) → Array NumPy RGB
 7. GUI: cap.release() → Cámara liberada
-8. GUI: Mostrar dimensiones, calcular tamaño
-9. GUI: cv2.resize() + Image.fromarray() + ImageTk → Mostrar preview
-10. Usuario: Click "Guardar"
-11. Procesador: imagen.flatten() → Vector 1D
-12. Procesador: ",".join() → String RGB
-13. Database: INSERT en Supabase
+8. GUI: cv2.imwrite() → Guarda foto en img/foto_YYYYMMDD_HHMMSS.png
+9. GUI: calcular_tamano_imagen() → Imprime dimensiones y tamaño
+10. GUI: mostrar_en_canvas() → Mostrar preview
+11. Usuario: Click "Guardar en Base de Datos"
+12. Procesador: imagen.flatten() → Vector 1D → ",".join() → String RGB
+13. Database: guardar_imagen() → INSERT en Supabase
 14. Database: Retorna ID
 15. GUI: Mostrar ID generado
 ```
 
-### Flujo de Consulta (con OpenCV)
+### Flujo de Consulta
 
 ```
 1. Usuario: main.py → Click "Ver Imagen"
-2. GUI: gui_viewer.py → Abre ventana
+2. GUI: gui_viewer.py → abrir_ventana_visor()
 3. Usuario: Ingresa ID → Click "Consultar"
 4. GUI: Validar ID (int)
-5. Database: SELECT de Supabase
+5. Database: obtener_imagen() → SELECT de Supabase
 6. Database: Retorna {width, height, rgb_data}
-7. Procesador: rgb_data.split(",") → Lista
+7. Procesador: cadena_rgb.split(",") → Lista
 8. Procesador: np.array(..., uint8) → Array 1D
 9. Procesador: arr.reshape(alto, ancho, 3) → Array 3D
-10. GUI: cv2.resize() + Image.fromarray() + ImageTk → Mostrar
+10. GUI: mostrar_en_canvas() → Redimensionar + ImageTk → Mostrar
 11. Usuario: Ve imagen reconstruida (idéntica al original)
 ```
 
@@ -1811,15 +1572,14 @@ Mostrar en Tkinter → PIL/ImageTk (único compatible)
 | Concepto | Dónde se usa | Explicación |
 |----------|--------------|-------------|
 | **Singleton** | `database.py` | Una sola instancia de conexión a BD |
-| **Type hints** | `def func() -> int:` | Documenta tipos de entrada/salida |
-| **Docstrings** | `"""texto"""` | Documentación de funciones |
+| **Closures** | `gui_upload.py`, `gui_viewer.py` | Funciones internas que acceden a variables externas |
+| **Listas mutables** | `[None]` en GUIs | Truco para modificar variables desde closures |
 | **Try/except** | Todos los handlers de GUI | Manejo de errores robusto |
-| **Global** | `global _client` | Modificar variable global (singleton) |
+| **Global** | `global cliente` | Modificar variable global (singleton) |
 | **f-strings** | `f"ID: {id}"` | Interpolación de strings |
-| **List comprehension** | `[x for x in list]` | Crear listas compactas |
-| **map()** | `map(str, flat)` | Aplicar función a iterable |
+| **map()** | `map(str, aplanado)` | Aplicar función a iterable |
 | **Lambda** | Tkinter callbacks | Funciones anónimas |
-| **Context managers** | (no usado pero útil) | `with open() as f:` |
+| **### comentarios** | Todos los archivos | Comentarios estilo del curso |
 
 ---
 
@@ -1834,7 +1594,8 @@ Mostrar en Tkinter → PIL/ImageTk (único compatible)
 | **Reshape** | `arr.reshape((h,w,3))` | 1D → 3D |
 | **cvtColor** | `cv2.cvtColor(img, cv2.COLOR_BGR2RGB)` | Conversión BGR→RGB |
 | **resize** | `cv2.resize(img, (w,h), interpolation)` | Cambiar tamaño |
-| **imread** | `cv2.imread(path)` | Leer imagen (BGR) |
+| **VideoCapture** | `cv2.VideoCapture(0)` | Capturar frames de cámara |
+| **imwrite** | `cv2.imwrite(path, img)` | Guardar imagen en disco |
 
 ---
 

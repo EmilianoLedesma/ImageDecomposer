@@ -10,7 +10,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 
-def validate_config():
+def validar_configuracion():
     ### Verifica que las credenciales de Supabase esten configuradas
     if not SUPABASE_URL:
         raise ValueError("SUPABASE_URL no esta configurado en el archivo .env")

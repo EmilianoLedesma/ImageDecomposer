@@ -1,45 +1,45 @@
 ### Modulo de base de datos - Operaciones con Supabase
 from supabase import create_client
-from config import SUPABASE_URL, SUPABASE_KEY, validate_config
+from config import SUPABASE_URL, SUPABASE_KEY, validar_configuracion
 
 ### Cliente global de Supabase (singleton)
 cliente = None
 
 
-def init_client():
+def iniciar_cliente():
     ### Inicializa y retorna el cliente de Supabase
     global cliente
     if cliente is None:
-        validate_config()
+        validar_configuracion()
         cliente = create_client(SUPABASE_URL, SUPABASE_KEY)
     return cliente
 
 
-def save_image(width, height, rgb_data):
+def guardar_imagen(ancho, alto, datos_rgb):
     ### Guarda los datos de una imagen en Supabase, retorna el ID
-    client = init_client()
+    cliente_local = iniciar_cliente()
 
-    data = {
-        "width": width,
-        "height": height,
-        "rgb_data": rgb_data
+    datos = {
+        "width": ancho,
+        "height": alto,
+        "rgb_data": datos_rgb
     }
 
-    response = client.table("images").insert(data).execute()
+    respuesta = cliente_local.table("images").insert(datos).execute()
 
-    if response.data:
-        return response.data[0]["id"]
+    if respuesta.data:
+        return respuesta.data[0]["id"]
     else:
         raise Exception("Error al guardar la imagen en la base de datos")
 
 
-def get_image(image_id):
+def obtener_imagen(id_imagen):
     ### Recupera los datos de una imagen por su ID
-    client = init_client()
+    cliente_local = iniciar_cliente()
 
-    response = client.table("images").select("*").eq("id", image_id).execute()
+    respuesta = cliente_local.table("images").select("*").eq("id", id_imagen).execute()
 
-    if response.data:
-        return response.data[0]
+    if respuesta.data:
+        return respuesta.data[0]
     else:
-        raise Exception(f"No se encontro imagen con ID: {image_id}")
+        raise Exception(f"No se encontro imagen con ID: {id_imagen}")

@@ -137,12 +137,14 @@ cap.release()
 ImageDecomposer/
 │
 ├── main.py               # Punto de entrada principal
-├── gui_upload.py         # Interfaz para cargar imagenes
+├── gui_upload.py         # Interfaz para capturar imagenes
 ├── gui_viewer.py         # Interfaz para visualizar imagenes
 ├── database.py           # Operaciones con Supabase
-├── image_processor.py    # Logica de procesamiento RGB
+├── image_processor.py    # Logica de procesamiento RGB y preview
 ├── config.py             # Configuracion y variables
+├── img/                  # Fotos capturadas desde la camara
 ├── requirements.txt      # Dependencias del proyecto
+├── DOCUMENTACION.md      # Documentacion tecnica detallada
 ├── .env                  # Variables de entorno (no incluido)
 ├── .gitignore            # Archivos ignorados por Git
 └── README.md             # Este archivo

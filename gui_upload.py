@@ -1,17 +1,17 @@
-"""
-GUI 1: Captura de camara y descomposicion de imagenes
-Usa OpenCV para captura y procesamiento, PIL solo para mostrar en Tkinter
-"""
+### GUI 1: Captura de camara y descomposicion de imagenes
+### Usa OpenCV para captura y procesamiento, PIL solo para mostrar en Tkinter
 import tkinter as tk
 from tkinter import messagebox
 from PIL import Image, ImageTk
 import cv2
-from image_processor import imagen_a_string_rgb, calcular_tamano_imagen
-from database import save_image
+import os
+from datetime import datetime
+from image_processor import imagen_a_string_rgb, calcular_tamano_imagen, mostrar_en_canvas
+from database import guardar_imagen
 
 
 def abrir_ventana_captura(parent=None):
-    """Crea y muestra la ventana de captura de imagenes con camara."""
+    ### Crea y muestra la ventana de captura de imagenes con camara
 
     ### Crear ventana
     if parent:
@@ -32,7 +32,7 @@ def abrir_ventana_captura(parent=None):
     ### --- Funciones ---
 
     def abrir_camara():
-        """Inicializa la camara y arranca el feed en vivo."""
+        ### Inicializa la camara y arranca el feed en vivo
         if camara_activa[0]:
             return
 
@@ -59,44 +59,19 @@ def abrir_ventana_captura(parent=None):
         actualizar_feed()
 
     def actualizar_feed():
-        """Lee un frame de la camara y lo muestra en el canvas."""
+        ### Lee un frame de la camara y lo muestra en el canvas
         if not camara_activa[0] or captura[0] is None or not captura[0].isOpened():
             return
 
         ret, frame = captura[0].read()  ### lee un frame de la camara
         if ret:
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  ### convierte BGR a RGB
-
-            ventana.update_idletasks()
-            ancho_canvas = canvas.winfo_width()
-            alto_canvas = canvas.winfo_height()
-
-            if ancho_canvas < 10:
-                ancho_canvas = 640
-                alto_canvas = 480
-
-            alto, ancho, _ = frame_rgb.shape
-            ratio = min(ancho_canvas / ancho, alto_canvas / alto) * 0.95
-            nuevo_ancho = int(ancho * ratio)
-            nuevo_alto = int(alto * ratio)
-
-            preview = cv2.resize(frame_rgb, (nuevo_ancho, nuevo_alto))
-
-            imagen_pil = Image.fromarray(preview)
-            foto_tk[0] = ImageTk.PhotoImage(imagen_pil)
-
-            canvas.delete("all")
-            canvas.create_image(
-                ancho_canvas // 2,
-                alto_canvas // 2,
-                image=foto_tk[0],
-                anchor=tk.CENTER
-            )
+            imagen_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  ### convierte BGR a RGB
+            mostrar_en_canvas(canvas, ventana, imagen_rgb, foto_tk, 0.95)
 
         ventana.after(30, actualizar_feed)  ### ~33 FPS
 
     def tomar_foto():
-        """Captura el frame actual, detiene la camara y muestra la foto."""
+        ### Captura el frame actual, detiene la camara y muestra la foto
         if not camara_activa[0] or captura[0] is None or not captura[0].isOpened():
             return
 
@@ -111,23 +86,31 @@ def abrir_ventana_captura(parent=None):
         ### Detener camara
         detener_camara()
 
+        ### Guardar foto en img/
+        carpeta_img = os.path.join(os.path.dirname(os.path.abspath(__file__)), "img")
+        marca_tiempo = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ruta_foto = os.path.join(carpeta_img, f"foto_{marca_tiempo}.png")
+        imagen_bgr = cv2.cvtColor(imagen_actual[0], cv2.COLOR_RGB2BGR)
+        cv2.imwrite(ruta_foto, imagen_bgr)
+        print(f"Foto guardada en: {ruta_foto}")
+
         ### Mostrar info
         alto, ancho, canales = imagen_actual[0].shape
         calcular_tamano_imagen(imagen_actual[0])
         print(f"Foto capturada - Shape: {imagen_actual[0].shape}")
 
         lbl_estado.config(text="Foto capturada", fg="blue")
-        lbl_info.config(text=f"Dimensiones: {ancho} x {alto} px | Canales: {canales}")
+        lbl_info.config(text=f"Dimensiones: {ancho} x {alto} px | Canales: {canales}\nGuardada en: {ruta_foto}")
         lbl_id.config(text="")
 
         ### Mostrar preview
-        mostrar_preview()
+        mostrar_en_canvas(canvas, ventana, imagen_actual[0], foto_tk)
 
         ### Habilitar boton guardar
         btn_guardar.config(state=tk.NORMAL)
 
     def detener_camara():
-        """Libera la camara y limpia variables."""
+        ### Libera la camara y limpia variables
         camara_activa[0] = False
         if captura[0] is not None:
             captura[0].release()
@@ -137,39 +120,8 @@ def abrir_ventana_captura(parent=None):
         btn_camara.config(state=tk.NORMAL)
         btn_foto.config(state=tk.DISABLED)
 
-    def mostrar_preview():
-        """Muestra la imagen capturada en el canvas."""
-        if imagen_actual[0] is None:
-            return
-
-        ventana.update()
-        ancho_canvas = canvas.winfo_width()
-        alto_canvas = canvas.winfo_height()
-
-        if ancho_canvas < 10:
-            ancho_canvas = 640
-            alto_canvas = 480
-
-        alto, ancho, _ = imagen_actual[0].shape
-        ratio = min(ancho_canvas / ancho, alto_canvas / alto) * 0.9
-        nuevo_ancho = int(ancho * ratio)
-        nuevo_alto = int(alto * ratio)
-
-        preview = cv2.resize(imagen_actual[0], (nuevo_ancho, nuevo_alto))
-
-        imagen_pil = Image.fromarray(preview)
-        foto_tk[0] = ImageTk.PhotoImage(imagen_pil)
-
-        canvas.delete("all")
-        canvas.create_image(
-            ancho_canvas // 2,
-            alto_canvas // 2,
-            image=foto_tk[0],
-            anchor=tk.CENTER
-        )
-
     def guardar_en_bd():
-        """Descompone la imagen en RGB y la guarda en Supabase."""
+        ### Descompone la imagen en RGB y la guarda en Supabase
         if imagen_actual[0] is None:
             messagebox.showwarning("Advertencia", "No hay imagen para guardar")
             return
@@ -178,13 +130,13 @@ def abrir_ventana_captura(parent=None):
             btn_guardar.config(state=tk.DISABLED, text="Procesando...")
             ventana.update()
 
-            rgb_string, ancho, alto = imagen_a_string_rgb(imagen_actual[0])
-            image_id = save_image(ancho, alto, rgb_string)
+            cadena_rgb, ancho, alto = imagen_a_string_rgb(imagen_actual[0])
+            id_imagen = guardar_imagen(ancho, alto, cadena_rgb)
 
-            lbl_id.config(text=f"Imagen guardada con ID: {image_id}", fg="green")
+            lbl_id.config(text=f"Imagen guardada con ID: {id_imagen}", fg="green")
             messagebox.showinfo(
                 "Exito",
-                f"Imagen guardada correctamente.\nID: {image_id}\n\nUsa este ID para recuperar la imagen."
+                f"Imagen guardada correctamente.\nID: {id_imagen}\n\nUsa este ID para recuperar la imagen."
             )
 
         except Exception as e:
@@ -195,7 +147,7 @@ def abrir_ventana_captura(parent=None):
             btn_guardar.config(state=tk.NORMAL, text="Guardar en Base de Datos")
 
     def cerrar_ventana(event=None):
-        """Libera la camara y cierra la ventana."""
+        ### Libera la camara y cierra la ventana
         detener_camara()
         ventana.destroy()
 

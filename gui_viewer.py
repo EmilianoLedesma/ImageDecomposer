@@ -1,17 +1,13 @@
-"""
-GUI 2: Consulta y reconstruccion de imagenes
-Usa OpenCV/numpy para procesamiento, PIL solo para mostrar en Tkinter
-"""
+### GUI 2: Consulta y reconstruccion de imagenes
+### Usa OpenCV/numpy para procesamiento, PIL solo para mostrar en Tkinter
 import tkinter as tk
 from tkinter import messagebox
-from PIL import Image, ImageTk
-import cv2
-from image_processor import string_rgb_a_imagen
-from database import get_image
+from image_processor import string_rgb_a_imagen, mostrar_en_canvas
+from database import obtener_imagen
 
 
 def abrir_ventana_visor(parent=None):
-    """Crea y muestra la ventana de consulta y reconstruccion de imagenes."""
+    ### Crea y muestra la ventana de consulta y reconstruccion de imagenes
 
     ### Crear ventana
     if parent:
@@ -30,7 +26,7 @@ def abrir_ventana_visor(parent=None):
     ### --- Funciones ---
 
     def consultar_imagen():
-        """Consulta la imagen por ID y la reconstruye."""
+        ### Consulta la imagen por ID y la reconstruye
         id_texto = entrada_id.get().strip()
 
         if not id_texto:
@@ -38,7 +34,7 @@ def abrir_ventana_visor(parent=None):
             return
 
         try:
-            image_id = int(id_texto)
+            id_imagen = int(id_texto)
         except ValueError:
             messagebox.showerror("Error", "El ID debe ser un numero entero")
             return
@@ -49,31 +45,31 @@ def abrir_ventana_visor(parent=None):
             ventana.update()
 
             ### Consultar base de datos
-            datos = get_image(image_id)
+            datos = obtener_imagen(id_imagen)
 
             ### Extraer datos
             ancho = datos["width"]
             alto = datos["height"]
-            rgb_string = datos["rgb_data"]
-            created_at = datos.get("created_at", "N/A")
+            cadena_rgb = datos["rgb_data"]
+            fecha_creacion = datos.get("created_at", "N/A")
 
             print(f"Datos recibidos - Ancho: {ancho}, Alto: {alto}")
-            print(f"Longitud rgb_string: {len(rgb_string)}")
+            print(f"Longitud cadena_rgb: {len(cadena_rgb)}")
             print(f"Valores esperados: {ancho * alto * 3}")
 
             ### Reconstruir imagen (retorna numpy array RGB)
-            imagen_actual[0] = string_rgb_a_imagen(rgb_string, ancho, alto)
+            imagen_actual[0] = string_rgb_a_imagen(cadena_rgb, ancho, alto)
 
             ### Mostrar info
             lbl_dimensiones.config(
                 text=f"Dimensiones: {ancho} x {alto} px | Shape: {imagen_actual[0].shape}"
             )
-            lbl_creado.config(text=f"Creado: {created_at}")
+            lbl_creado.config(text=f"Creado: {fecha_creacion}")
 
             ### Mostrar imagen reconstruida
-            mostrar_imagen()
+            mostrar_en_canvas(canvas, ventana, imagen_actual[0], foto_tk)
 
-            lbl_estado.config(text=f"Imagen #{image_id} reconstruida correctamente", fg="green")
+            lbl_estado.config(text=f"Imagen #{id_imagen} reconstruida correctamente", fg="green")
 
         except Exception as e:
             messagebox.showerror("Error", f"Error al consultar:\n{str(e)}")
@@ -83,41 +79,8 @@ def abrir_ventana_visor(parent=None):
         finally:
             btn_consultar.config(state=tk.NORMAL)
 
-    def mostrar_imagen():
-        """Muestra la imagen reconstruida en el canvas."""
-        if imagen_actual[0] is None:
-            return
-
-        ventana.update()
-        ancho_canvas = canvas.winfo_width()
-        alto_canvas = canvas.winfo_height()
-
-        if ancho_canvas < 10:
-            ancho_canvas = 400
-            alto_canvas = 300
-
-        alto, ancho, _ = imagen_actual[0].shape
-        ratio = min(ancho_canvas / ancho, alto_canvas / alto) * 0.9
-        nuevo_ancho = int(ancho * ratio)
-        nuevo_alto = int(alto * ratio)
-
-        ### Redimensionar con cv2
-        preview = cv2.resize(imagen_actual[0], (nuevo_ancho, nuevo_alto))
-
-        ### Convertir numpy array a PIL Image para Tkinter
-        imagen_pil = Image.fromarray(preview)
-        foto_tk[0] = ImageTk.PhotoImage(imagen_pil)
-
-        canvas.delete("all")
-        canvas.create_image(
-            ancho_canvas // 2,
-            alto_canvas // 2,
-            image=foto_tk[0],
-            anchor=tk.CENTER
-        )
-
     def limpiar_display():
-        """Limpia la visualizacion."""
+        ### Limpia la visualizacion
         canvas.delete("all")
         lbl_dimensiones.config(text="")
         lbl_creado.config(text="")
