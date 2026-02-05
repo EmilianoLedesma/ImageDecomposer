@@ -1,5 +1,4 @@
 ### Procesamiento de imagenes - Conversion, manipulacion RGB y preview
-### Usa OpenCV (cv2) y NumPy siguiendo el estilo del curso
 import numpy as np
 import cv2
 from PIL import Image, ImageTk
@@ -42,7 +41,6 @@ def string_rgb_a_imagen(cadena_rgb, ancho, alto):
 
 def obtener_canales(imagen):
     ### Separa los canales RGB de una imagen
-    ### Similar a canales_naturales.py del profesor
     r = imagen[:, :, 0]
     g = imagen[:, :, 1]
     b = imagen[:, :, 2]
